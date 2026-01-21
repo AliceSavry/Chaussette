@@ -8,29 +8,39 @@
   <style>
     :root{ color-scheme: dark; }
     html,body{ height:100%; }
-    body{ margin:0; background:#070A12; }
-    canvas{ image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; }
+    body{ margin:0; background:#070A12; overscroll-behavior:none; }
+    canvas{ image-rendering: pixelated; image-rendering: crisp-edges; touch-action:none; }
     .kbd{ border:1px solid rgb(148 163 184 / .35); background:rgb(15 23 42 / .6); padding:.1rem .35rem; border-radius:.35rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.85em; }
     .scanlines:before{ content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(to bottom, rgba(255,255,255,.06), rgba(0,0,0,.06)); mix-blend-mode:overlay; opacity:.18; mask-image: repeating-linear-gradient(to bottom, #000 0px, #000 2px, transparent 3px, transparent 5px); }
     .range{ accent-color: rgb(34 211 238); }
 
-    /* Mobile portrait helpers */
-    @media (max-width: 640px) {
-      .hud-compact b { font-variant-numeric: tabular-nums; }
-      #touchUI { padding: 0.5rem; }
-      #touchLeft, #touchRight, #touchJump, #touchPause { width: 3.5rem; height: 3.5rem; }
-      #touchJump { width: 4rem; height: 4rem; }
-      .hud-compact { font-size: 0.7rem !important; gap: 0.25rem; }
+    /* Mobile/portrait: keep game focused, reduce layout noise */
+    @media (max-width: 1024px) {
+      header, aside, footer { display:none !important; }
+      main { padding:0 !important; }
+      #appRoot > main > div { max-width:none !important; padding:0 !important; display:block !important; }
+      #gameWrap { border-radius:0 !important; border:none !important; }
     }
-    @media (max-height: 500px) {
-      header, footer { display: none; }
-      main { padding: 0.25rem !important; }
+
+    /* Always prefer a centered game canvas, max height visible */
+    #gameWrap { height: calc(100svh - var(--safe-top,0px)); }
+
+    /* Touch controls */
+    .touch-ui { position:absolute; inset:0; pointer-events:none; }
+    .touch-ui .btn, .touch-ui .stick { pointer-events:auto; user-select:none; -webkit-user-select:none; touch-action:none; }
+    .touch-ui .btn { width:72px; height:72px; border-radius:18px; display:flex; align-items:center; justify-content:center; font-weight:800; letter-spacing:.02em; }
+    .touch-ui .btn:active { transform: scale(0.98); }
+    .touch-ui .stick { width:148px; height:148px; border-radius:26px; position:relative; }
+    .touch-ui .nub { width:56px; height:56px; border-radius:18px; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); }
+
+    @media (hover:none) and (pointer:coarse) {
+      #touchControls { display:block !important; }
     }
   </style>
 </head>
 <body class="text-slate-100">
-  <div class="min-h-screen flex flex-col">
-    <header class="px-2 sm:px-4 py-2 sm:py-4 border-b border-slate-800/80 bg-slate-950/40 backdrop-blur">
+  <div class="min-h-screen flex flex-col" id="appRoot">
+    <header class="px-4 sm:px-6 py-4 border-b border-slate-800/80 bg-slate-950/40 backdrop-blur">
       <div class="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-3">
@@ -63,8 +73,8 @@
     </header>
 
     <main class="flex-1">
-      <div class="max-w-6xl mx-auto px-1 py-1 sm:px-3 sm:py-2 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-2 sm:gap-3 lg:gap-4 h-full">
-        <section class="relative rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 grid lg:grid-cols-[1fr_360px] gap-4">
+        <section id="gameWrap" class="relative rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
           <div class="absolute inset-x-0 top-0 z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 border-b border-slate-800/70 bg-slate-950/50">
             <div class="flex items-center justify-between sm:justify-start gap-2 text-xs sm:text-sm text-slate-200/90">
               <span class="inline-flex items-center gap-2">
@@ -74,7 +84,7 @@
               <span class="hidden sm:inline text-slate-400">•</span>
               <span class="hidden sm:inline" id="seedInfo"></span>
             </div>
-            <div class="hud-compact flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-3 text-[11px] sm:text-sm">
+            <div class="flex flex-wrap items-center justify-between sm:justify-end gap-3 text-xs sm:text-sm">
               <span class="text-slate-300">Vies: <b id="hudLives">3</b></span>
               <span class="text-slate-300">Score: <b id="hudScore">0</b></span>
               <span class="text-slate-300">Combo: <b id="hudCombo">x1.0</b></span>
@@ -83,29 +93,24 @@
             </div>
           </div>
 
-          <div class="relative aspect-[16/9] w-full">
+          <div id="gameViewport" class="relative w-full h-full">
             <canvas id="game" class="w-full h-full block"></canvas>
             <div class="scanlines absolute inset-0"></div>
 
-            <!-- Touch controls (mobile portrait) -->
-            <div id="touchUI" class="absolute inset-x-0 bottom-0 z-20 p-3 sm:hidden">
-              <div class="flex items-end justify-between">
-                <div class="flex gap-3">
-                  <button id="touchLeft" class="select-none w-16 h-16 rounded-2xl border border-slate-700/70 bg-slate-950/45 backdrop-blur active:bg-slate-900/70">
-                    <div class="text-center text-xl leading-[64px]">◀</div>
-                  </button>
-                  <button id="touchRight" class="select-none w-16 h-16 rounded-2xl border border-slate-700/70 bg-slate-950/45 backdrop-blur active:bg-slate-900/70">
-                    <div class="text-center text-xl leading-[64px]">▶</div>
-                  </button>
+            <!-- Touch controls (shown only on mobile/touch) -->
+            <div id="touchControls" class="touch-ui hidden">
+              <div class="absolute left-3 bottom-3 flex items-end gap-3">
+                <div id="stick" class="stick rounded-3xl border border-slate-700/60 bg-slate-950/35 backdrop-blur">
+                  <div id="nub" class="nub bg-cyan-400/20 border border-cyan-300/30"></div>
                 </div>
-                <div class="flex gap-3">
-                  <button id="touchJump" class="select-none w-20 h-20 rounded-3xl border border-cyan-400/25 bg-cyan-500/15 backdrop-blur active:bg-cyan-500/30">
-                    <div class="text-center text-xl leading-[80px] font-semibold">SAUT</div>
-                  </button>
-                  <button id="touchPause" class="select-none w-14 h-14 rounded-2xl border border-slate-700/70 bg-slate-950/45 backdrop-blur active:bg-slate-900/70">
-                    <div class="text-center text-sm leading-[56px]">⏸</div>
-                  </button>
-                </div>
+              </div>
+              <div class="absolute right-3 bottom-3 flex items-end gap-3">
+                <button id="btnJumpTouch" class="btn bg-emerald-500/20 border border-emerald-400/30 backdrop-blur">SAUT</button>
+                <button id="btnPauseTouch" class="btn bg-slate-800/45 border border-slate-600/45 backdrop-blur">PAUSE</button>
+              </div>
+              <div class="absolute left-1/2 -translate-x-1/2 top-3 flex items-center gap-2 rounded-xl border border-slate-800/70 bg-slate-950/35 px-3 py-2 text-xs text-slate-200/90 backdrop-blur">
+                <span class="text-slate-400">Mobile:</span>
+                <span>Joystick + SAUT</span>
               </div>
             </div>
 
@@ -220,7 +225,7 @@
           </div>
         </section>
 
-        <aside id="docsAside" class="hidden lg:block rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
+        <aside class="rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
           <div class="px-4 py-3 border-b border-slate-800/70 bg-slate-950/40">
             <h3 class="font-semibold">Docs (Phase 0/1 → 2+)</h3>
             <p class="text-xs text-slate-400">Récap • GDD • Architecture • Plan • Audio • Scores • Power-ups</p>
@@ -285,7 +290,7 @@
       </div>
     </main>
 
-    <footer class="px-2 sm:px-4 py-2 sm:py-4 border-t border-slate-800/80 text-xs text-slate-400 bg-slate-950/30 sm:hidden lg:block">
+    <footer class="px-4 sm:px-6 py-4 border-t border-slate-800/80 text-xs text-slate-400 bg-slate-950/30">
       <div class="max-w-6xl mx-auto flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
         <div>Ouvre ce fichier localement : aucun build, aucun serveur requis.</div>
         <div>Debug: <span class="kbd">F1</span> overlay • <span class="kbd">P</span> particules on/off</div>
@@ -357,10 +362,18 @@
         this.down = new Set();
         this.pressed = new Set();
 
-        // Touch virtual keys (for portrait/mobile)
-        this.vDown = new Set();
-        this.vPressed = new Set();
-      
+        // Touch virtual controls
+        this.touch = {
+          active:false,
+          axisX:0,
+          jumpTap:false,
+          pauseTap:false,
+          stickId:null,
+          stickCenter:{x:0,y:0},
+          nub:{x:0,y:0},
+          stickRadius:54,
+        };
+
         window.addEventListener('keydown', (e) => {
           const k = e.key;
           if (!this.down.has(k)) this.pressed.add(k);
@@ -373,24 +386,95 @@
         });
       }
 
-      // --- virtual keys API ---
-      vKeyDown(k) {
-        if (!this.vDown.has(k)) this.vPressed.add(k);
-        this.vDown.add(k);
-      }
-      vKeyUp(k) { this.vDown.delete(k); }
+      attachTouchUI({ stickEl, nubEl, btnJump, btnPause }) {
+        if (!stickEl || !nubEl || !btnJump || !btnPause) return;
 
-      isDown(key) { return this.down.has(key) || this.vDown.has(key); }
-      wasPressed(key) { return this.pressed.has(key) || this.vPressed.has(key); }
-      endFrame() { this.pressed.clear(); this.vPressed.clear(); }
+        const t = this.touch;
+        const setNub = (dx, dy) => {
+          // clamp to radius
+          const r = t.stickRadius;
+          const len = Math.hypot(dx, dy);
+          const k = len > r ? r/len : 1;
+          const cx = dx*k;
+          const cy = dy*k;
+          t.nub.x = cx;
+          t.nub.y = cy;
+          nubEl.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
+          // horizontal axis only
+          const ax = clamp(cx / r, -1, 1);
+          t.axisX = Math.abs(ax) < 0.18 ? 0 : ax;
+        };
+
+        const recalcCenter = () => {
+          const r = stickEl.getBoundingClientRect();
+          t.stickCenter.x = r.left + r.width/2;
+          t.stickCenter.y = r.top + r.height/2;
+        };
+
+        const onPointerDown = (e) => {
+          recalcCenter();
+          t.active = true;
+          t.stickId = e.pointerId;
+          stickEl.setPointerCapture(e.pointerId);
+          const dx = e.clientX - t.stickCenter.x;
+          const dy = e.clientY - t.stickCenter.y;
+          setNub(dx, dy);
+          e.preventDefault();
+        };
+        const onPointerMove = (e) => {
+          if (!t.active || e.pointerId !== t.stickId) return;
+          const dx = e.clientX - t.stickCenter.x;
+          const dy = e.clientY - t.stickCenter.y;
+          setNub(dx, dy);
+          e.preventDefault();
+        };
+        const onPointerUp = (e) => {
+          if (e.pointerId !== t.stickId) return;
+          t.active = false;
+          t.stickId = null;
+          t.axisX = 0;
+          setNub(0, 0);
+          e.preventDefault();
+        };
+
+        stickEl.addEventListener('pointerdown', onPointerDown, { passive:false });
+        stickEl.addEventListener('pointermove', onPointerMove, { passive:false });
+        stickEl.addEventListener('pointerup', onPointerUp, { passive:false });
+        stickEl.addEventListener('pointercancel', onPointerUp, { passive:false });
+
+        const tap = (setter) => (e) => {
+          setter();
+          e.preventDefault();
+        };
+        btnJump.addEventListener('pointerdown', tap(() => { this.pressed.add('__jump'); }), { passive:false });
+        btnPause.addEventListener('pointerdown', tap(() => { this.pressed.add('__pause'); }), { passive:false });
+
+        // keep center fresh on resize/orientation
+        window.addEventListener('resize', recalcCenter);
+        window.addEventListener('orientationchange', recalcCenter);
+        recalcCenter();
+      }
+
+      isDown(key) { return this.down.has(key); }
+      wasPressed(key) { return this.pressed.has(key); }
+      endFrame() { this.pressed.clear(); }
 
       axisX() {
         const left = this.isDown('ArrowLeft') || this.isDown('a') || this.isDown('A');
         const right = this.isDown('ArrowRight') || this.isDown('d') || this.isDown('D');
-        return (right ? 1 : 0) - (left ? 1 : 0);
+        const kb = (right ? 1 : 0) - (left ? 1 : 0);
+        const touchAxis = this.touch.axisX;
+        // keyboard wins if pressed, else touch
+        if (kb !== 0) return kb;
+        return touchAxis;
       }
+
       jumpPressed() {
-        return this.wasPressed(' ') || this.wasPressed('ArrowUp') || this.wasPressed('w') || this.wasPressed('W');
+        return this.wasPressed(' ') || this.wasPressed('ArrowUp') || this.wasPressed('w') || this.wasPressed('W') || this.wasPressed('__jump');
+      }
+
+      pausePressed() {
+        return this.wasPressed('Escape') || this.wasPressed('__pause');
       }
     }
 
@@ -1661,6 +1745,24 @@
       }
 
       resize() {
+        // Make the game area truly responsive on mobile by fitting the wrapper to the viewport.
+        const wrap = document.getElementById('gameWrap');
+        const header = document.querySelector('header');
+        const footer = document.querySelector('footer');
+        const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+        const coarse = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+        if (wrap) {
+          if (coarse && isPortrait) {
+            // Fullscreen game in portrait
+            const h = window.innerHeight;
+            wrap.style.height = h + 'px';
+          } else {
+            // Default desktop/tablet layout keeps aspect-ish via wrapper natural height
+            wrap.style.height = '';
+          }
+        }
+
         const rect = this.canvas.getBoundingClientRect();
         this.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
         this.canvas.width = Math.floor(rect.width * this.dpr);
@@ -2218,12 +2320,12 @@
         frame = clamp(frame, 0, 0.05);
 
         if (this.state === GameState.PLAYING) {
-          if (this.input.wasPressed('Escape')) {
+          if (this.input.pausePressed()) {
             this.audio.play('ui', 1.0);
             this.setState(GameState.PAUSED);
           }
         } else if (this.state === GameState.PAUSED) {
-          if (this.input.wasPressed('Escape')) {
+          if (this.input.pausePressed()) {
             this.audio.play('ui', 1.0);
             this.setState(GameState.PLAYING);
           }
@@ -2290,6 +2392,14 @@
       seedInfo.textContent = `seed ${game.seed} • ${game.level?.name || ''}`;
       hudLevel.textContent = String(game.levelIndex + 1);
 
+      // Mobile focus mode: hide docs/aside automatically in portrait and show touch controls
+      const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+      const coarse = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      const touchUI = document.getElementById('touchControls');
+      if (touchUI) {
+        touchUI.classList.toggle('hidden', !(coarse && isPortrait));
+      }
+
       if (game.state === GameState.MENU) {
         statusText.textContent = 'Menu';
         statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
@@ -2339,13 +2449,18 @@
     // ---------- Boot ----------
     const game = new Game(document.getElementById('game'));
 
-    // Mobile docs toggle
-    const docsAside = el('docsAside');
-    const docsToggle = el('docsToggle');
-    docsToggle?.addEventListener('click', () => {
-      docsAside.classList.toggle('hidden');
-      game.audio?.play('ui', 1);
-    });
+    // Mobile/touch: attach virtual controls
+    (function initTouchControls(){
+      const stickEl = document.getElementById('stick');
+      const nubEl = document.getElementById('nub');
+      const btnJump = document.getElementById('btnJumpTouch');
+      const btnPause = document.getElementById('btnPauseTouch');
+      game.input.attachTouchUI({ stickEl, nubEl, btnJump, btnPause });
+
+      // Prevent page scroll/zoom gestures while interacting with the game area
+      const wrap = document.getElementById('gameWrap');
+      wrap?.addEventListener('touchmove', (e) => e.preventDefault(), { passive:false });
+    })();
 
     // Audio UI
     const btnAudio = el('btnAudio');
@@ -2473,68 +2588,10 @@
       if (e.key === 'Enter') { await game.audio.unlock(); game.audio.play('ui', 1.0); doSaveScore(el('nameOver').value); }
     });
 
-    // ---- Touch controls wiring (portrait/mobile) ----
-    const touchUI = el('touchUI');
-    const touchLeft = el('touchLeft');
-    const touchRight = el('touchRight');
-    const touchJump = el('touchJump');
-    const touchPause = el('touchPause');
-
-    function bindHold(btn, key) {
-      if (!btn) return;
-      const down = (e) => {
-        e.preventDefault();
-        game.input.vKeyDown(key);
-      };
-      const up = (e) => {
-        e.preventDefault();
-        game.input.vKeyUp(key);
-      };
-
-      btn.addEventListener('pointerdown', down, { passive:false });
-      btn.addEventListener('pointerup', up, { passive:false });
-      btn.addEventListener('pointercancel', up, { passive:false });
-      btn.addEventListener('pointerleave', up, { passive:false });
-    }
-
-    bindHold(touchLeft, 'ArrowLeft');
-    bindHold(touchRight, 'ArrowRight');
-
-    // Jump: tap (edge-trigger) but also allow hold -> keep key down
-    if (touchJump) {
-      touchJump.addEventListener('pointerdown', (e) => { e.preventDefault(); game.input.vKeyDown(' '); }, { passive:false });
-      touchJump.addEventListener('pointerup', (e) => { e.preventDefault(); game.input.vKeyUp(' '); }, { passive:false });
-      touchJump.addEventListener('pointercancel', (e) => { e.preventDefault(); game.input.vKeyUp(' '); }, { passive:false });
-    }
-
-    if (touchPause) {
-      touchPause.addEventListener('click', async (e) => {
-        e.preventDefault();
-        await game.audio.unlock();
-        game.audio.play('ui', 1.0);
-        if (game.state === GameState.PLAYING) game.setState(GameState.PAUSED);
-        else if (game.state === GameState.PAUSED) game.setState(GameState.PLAYING);
-      });
-    }
-
-    // Portrait-friendly canvas aspect: use taller aspect on narrow screens
-    function syncPortraitLayout() {
-      const holder = game.canvas?.parentElement;
-      if (!holder) return;
-      const isPortrait = window.matchMedia('(max-width: 640px)').matches && window.matchMedia('(orientation: portrait)').matches;
-      holder.classList.toggle('aspect-[16/9]', !isPortrait);
-      holder.classList.toggle('aspect-[9/16]', isPortrait);
-      touchUI?.classList.toggle('hidden', !window.matchMedia('(max-width: 640px)').matches);
-      game.resize();
-    }
-    window.addEventListener('resize', syncPortraitLayout);
-    window.addEventListener('orientationchange', syncPortraitLayout);
-
     // Init UI state
     syncAudioUI();
     renderLeaderboards();
     updateUIFromGame(game);
-    syncPortraitLayout();
     game.tick();
   </script>
 </body>
