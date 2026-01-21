@@ -17,12 +17,20 @@
     /* Mobile portrait helpers */
     @media (max-width: 640px) {
       .hud-compact b { font-variant-numeric: tabular-nums; }
+      #touchUI { padding: 0.5rem; }
+      #touchLeft, #touchRight, #touchJump, #touchPause { width: 3.5rem; height: 3.5rem; }
+      #touchJump { width: 4rem; height: 4rem; }
+      .hud-compact { font-size: 0.7rem !important; gap: 0.25rem; }
+    }
+    @media (max-height: 500px) {
+      header, footer { display: none; }
+      main { padding: 0.25rem !important; }
     }
   </style>
 </head>
 <body class="text-slate-100">
   <div class="min-h-screen flex flex-col">
-    <header class="px-4 sm:px-6 py-4 border-b border-slate-800/80 bg-slate-950/40 backdrop-blur">
+    <header class="px-2 sm:px-4 py-2 sm:py-4 border-b border-slate-800/80 bg-slate-950/40 backdrop-blur">
       <div class="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-3">
@@ -55,7 +63,7 @@
     </header>
 
     <main class="flex-1">
-      <div class="max-w-6xl mx-auto px-3 sm:px-6 py-3 sm:py-4 grid lg:grid-cols-[1fr_360px] gap-3 sm:gap-4">
+      <div class="max-w-6xl mx-auto px-1 py-1 sm:px-3 sm:py-2 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-2 sm:gap-3 lg:gap-4 h-full">
         <section class="relative rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
           <div class="absolute inset-x-0 top-0 z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 border-b border-slate-800/70 bg-slate-950/50">
             <div class="flex items-center justify-between sm:justify-start gap-2 text-xs sm:text-sm text-slate-200/90">
@@ -212,7 +220,7 @@
           </div>
         </section>
 
-        <aside class="rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
+        <aside id="docsAside" class="hidden lg:block rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
           <div class="px-4 py-3 border-b border-slate-800/70 bg-slate-950/40">
             <h3 class="font-semibold">Docs (Phase 0/1 → 2+)</h3>
             <p class="text-xs text-slate-400">Récap • GDD • Architecture • Plan • Audio • Scores • Power-ups</p>
@@ -277,7 +285,7 @@
       </div>
     </main>
 
-    <footer class="px-4 sm:px-6 py-4 border-t border-slate-800/80 text-xs text-slate-400 bg-slate-950/30">
+    <footer class="px-2 sm:px-4 py-2 sm:py-4 border-t border-slate-800/80 text-xs text-slate-400 bg-slate-950/30 sm:hidden lg:block">
       <div class="max-w-6xl mx-auto flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
         <div>Ouvre ce fichier localement : aucun build, aucun serveur requis.</div>
         <div>Debug: <span class="kbd">F1</span> overlay • <span class="kbd">P</span> particules on/off</div>
@@ -2330,6 +2338,14 @@
 
     // ---------- Boot ----------
     const game = new Game(document.getElementById('game'));
+
+    // Mobile docs toggle
+    const docsAside = el('docsAside');
+    const docsToggle = el('docsToggle');
+    docsToggle?.addEventListener('click', () => {
+      docsAside.classList.toggle('hidden');
+      game.audio?.play('ui', 1);
+    });
 
     // Audio UI
     const btnAudio = el('btnAudio');
