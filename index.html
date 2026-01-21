@@ -1,0 +1,2525 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Chaussette Express — Prototype Plateforme (Juicy)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    :root{ color-scheme: dark; }
+    html,body{ height:100%; }
+    body{ margin:0; background:#070A12; }
+    canvas{ image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; }
+    .kbd{ border:1px solid rgb(148 163 184 / .35); background:rgb(15 23 42 / .6); padding:.1rem .35rem; border-radius:.35rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.85em; }
+    .scanlines:before{ content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(to bottom, rgba(255,255,255,.06), rgba(0,0,0,.06)); mix-blend-mode:overlay; opacity:.18; mask-image: repeating-linear-gradient(to bottom, #000 0px, #000 2px, transparent 3px, transparent 5px); }
+    .range{ accent-color: rgb(34 211 238); }
+
+    /* Mobile portrait helpers */
+    @media (max-width: 640px) {
+      .hud-compact b { font-variant-numeric: tabular-nums; }
+    }
+  </style>
+</head>
+<body class="text-slate-100">
+  <div class="min-h-screen flex flex-col">
+    <header class="px-4 sm:px-6 py-4 border-b border-slate-800/80 bg-slate-950/40 backdrop-blur">
+      <div class="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500 to-cyan-400"></div>
+            <div>
+              <h1 class="text-lg sm:text-xl font-semibold leading-tight">Chaussette Express</h1>
+              <p class="text-xs sm:text-sm text-slate-300/90">Plateforme 2D humoristique — Canvas + Vanilla JS (sans installation)</p>
+            </div>
+          </div>
+          <div class="flex sm:hidden items-center gap-2">
+            <button id="btnPlay" class="px-3 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/25">Jouer</button>
+            <button id="btnDocs" class="px-3 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Docs</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="hidden sm:flex items-center gap-2">
+            <button id="btnPlay2" class="px-3 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/25">Jouer</button>
+            <button id="btnDocs2" class="px-3 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Docs</button>
+          </div>
+          <div class="ml-auto sm:ml-0 flex items-center gap-3 rounded-xl border border-slate-800/70 bg-slate-950/30 px-3 py-2">
+            <div class="text-xs text-slate-300">Son</div>
+            <button id="btnAudio" class="text-xs px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/20">ON</button>
+            <input id="vol" type="range" min="0" max="100" value="70" class="range w-28" />
+            <div class="text-xs text-slate-300">Musique</div>
+            <button id="btnMusic" class="text-xs px-2 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/20">ON</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1">
+      <div class="max-w-6xl mx-auto px-3 sm:px-6 py-3 sm:py-4 grid lg:grid-cols-[1fr_360px] gap-3 sm:gap-4">
+        <section class="relative rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
+          <div class="absolute inset-x-0 top-0 z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 border-b border-slate-800/70 bg-slate-950/50">
+            <div class="flex items-center justify-between sm:justify-start gap-2 text-xs sm:text-sm text-slate-200/90">
+              <span class="inline-flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400" id="statusDot"></span>
+                <span id="statusText">Menu</span>
+              </span>
+              <span class="hidden sm:inline text-slate-400">•</span>
+              <span class="hidden sm:inline" id="seedInfo"></span>
+            </div>
+            <div class="hud-compact flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-3 text-[11px] sm:text-sm">
+              <span class="text-slate-300">Vies: <b id="hudLives">3</b></span>
+              <span class="text-slate-300">Score: <b id="hudScore">0</b></span>
+              <span class="text-slate-300">Combo: <b id="hudCombo">x1.0</b></span>
+              <span class="text-slate-300">Power: <b id="hudPower">—</b></span>
+              <span class="text-slate-300">Niveau: <b id="hudLevel">1</b></span>
+            </div>
+          </div>
+
+          <div class="relative aspect-[16/9] w-full">
+            <canvas id="game" class="w-full h-full block"></canvas>
+            <div class="scanlines absolute inset-0"></div>
+
+            <!-- Touch controls (mobile portrait) -->
+            <div id="touchUI" class="absolute inset-x-0 bottom-0 z-20 p-3 sm:hidden">
+              <div class="flex items-end justify-between">
+                <div class="flex gap-3">
+                  <button id="touchLeft" class="select-none w-16 h-16 rounded-2xl border border-slate-700/70 bg-slate-950/45 backdrop-blur active:bg-slate-900/70">
+                    <div class="text-center text-xl leading-[64px]">◀</div>
+                  </button>
+                  <button id="touchRight" class="select-none w-16 h-16 rounded-2xl border border-slate-700/70 bg-slate-950/45 backdrop-blur active:bg-slate-900/70">
+                    <div class="text-center text-xl leading-[64px]">▶</div>
+                  </button>
+                </div>
+                <div class="flex gap-3">
+                  <button id="touchJump" class="select-none w-20 h-20 rounded-3xl border border-cyan-400/25 bg-cyan-500/15 backdrop-blur active:bg-cyan-500/30">
+                    <div class="text-center text-xl leading-[80px] font-semibold">SAUT</div>
+                  </button>
+                  <button id="touchPause" class="select-none w-14 h-14 rounded-2xl border border-slate-700/70 bg-slate-950/45 backdrop-blur active:bg-slate-900/70">
+                    <div class="text-center text-sm leading-[56px]">⏸</div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Overlays -->
+            <div id="overlay" class="absolute inset-0 flex items-center justify-center p-4">
+              <div id="panelMenu" class="max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-950/70 backdrop-blur p-5">
+                <h2 class="text-xl font-semibold">Livraison urgente de chaussettes</h2>
+                <p class="mt-2 text-slate-300">Tu es <b>Capitaine Chaussette</b>, coursier officiellement non certifié. Traverse des décors absurdes, collecte des <b>chaussettes sales</b>, enchaîne des <b>combos</b> et atteins la <b>porte</b>. Les <b>loot</b> donnent des pouvoirs façon Mario (jusqu’au prochain coup).</p>
+                <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div class="rounded-xl border border-slate-800/70 bg-slate-900/40 p-3">
+                    <div class="text-slate-200 font-medium">Déplacement</div>
+                    <div class="mt-1 text-slate-300"><span class="kbd">←</span> <span class="kbd">→</span> ou <span class="kbd">A</span> <span class="kbd">D</span></div>
+                  </div>
+                  <div class="rounded-xl border border-slate-800/70 bg-slate-900/40 p-3">
+                    <div class="text-slate-200 font-medium">Saut</div>
+                    <div class="mt-1 text-slate-300"><span class="kbd">Espace</span> ou <span class="kbd">↑</span> ou <span class="kbd">W</span></div>
+                  </div>
+                  <div class="rounded-xl border border-slate-800/70 bg-slate-900/40 p-3">
+                    <div class="text-slate-200 font-medium">Pause</div>
+                    <div class="mt-1 text-slate-300"><span class="kbd">Échap</span></div>
+                  </div>
+                  <div class="rounded-xl border border-slate-800/70 bg-slate-900/40 p-3">
+                    <div class="text-slate-200 font-medium">Reset</div>
+                    <div class="mt-1 text-slate-300"><span class="kbd">R</span> (niveau)</div>
+                  </div>
+                </div>
+                <div class="mt-4 rounded-xl border border-slate-800/70 bg-slate-900/30 p-3 text-sm">
+                  <div class="font-semibold text-slate-100">Loot / pouvoirs</div>
+                  <ul class="mt-2 list-disc pl-5 space-y-1 text-slate-300">
+                    <li><b>☕ Café Turbo</b> : vitesse ++</li>
+                    <li><b>🪶 Plume</b> : double saut</li>
+                    <li><b>🧲 Aimant</b> : ramasse les chaussettes plus loin</li>
+                    <li><b>🪖 Casque</b> : absorbe 1 coup</li>
+                    <li><b>🌀 Ressort</b> : saut plus haut</li>
+                  </ul>
+                  <div class="mt-2 text-xs text-slate-400">Tu perds le power au prochain dégât (style Mario). Les vies ne partent que si tu es “nu”.</div>
+                </div>
+                <div class="mt-5 flex flex-wrap items-center gap-2">
+                  <button id="btnStart" class="px-4 py-2 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-400/30 font-semibold">Démarrer</button>
+                  <button id="btnHow" class="px-4 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Voir les docs</button>
+                  <button id="btnScores" class="px-4 py-2 rounded-xl bg-fuchsia-500/15 hover:bg-fuchsia-500/25 border border-fuchsia-400/20">Tableau des scores</button>
+                  <div class="ml-auto text-xs text-slate-400">Astuce: écrase les ennemis pour booster le combo.</div>
+                </div>
+              </div>
+
+              <div id="panelPause" class="hidden max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-950/70 backdrop-blur p-5">
+                <h2 class="text-xl font-semibold">Pause</h2>
+                <p class="mt-2 text-slate-300">Le chantier s’arrête… enfin presque.</p>
+                <div class="mt-5 flex items-center gap-2">
+                  <button id="btnResume" class="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/25 font-semibold">Reprendre</button>
+                  <button id="btnRestart" class="px-4 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Recommencer</button>
+                </div>
+              </div>
+
+              <div id="panelGameOver" class="hidden max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-950/70 backdrop-blur p-5">
+                <h2 class="text-xl font-semibold">Game Over</h2>
+                <p class="mt-2 text-slate-300">Tu as officiellement livré… une défaite. Mais la chaussette croit en toi.</p>
+                <div class="mt-3 grid gap-2">
+                  <label class="text-xs text-slate-300">Enregistrer le score (uniquement à la fin de la partie)</label>
+                  <div class="flex gap-2">
+                    <input id="nameOver" class="w-full px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-700/60" maxlength="14" placeholder="Ton pseudo (ex: SockBoss)" />
+                    <button id="btnSaveOver" class="px-3 py-2 rounded-xl bg-fuchsia-500/15 hover:bg-fuchsia-500/25 border border-fuchsia-400/20">Sauver</button>
+                  </div>
+                  <div class="text-xs text-slate-400">Top 10 local (dans ton navigateur).</div>
+                </div>
+                <div class="mt-4 rounded-xl border border-slate-800/70 bg-slate-900/30 p-3">
+                  <div class="flex items-center justify-between">
+                    <div class="font-semibold">Tableau des scores</div>
+                    <button id="btnClearScores" class="text-xs px-2 py-1 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Reset</button>
+                  </div>
+                  <ol id="scoreListOver" class="mt-2 text-sm text-slate-300 space-y-1"></ol>
+                </div>
+                <div class="mt-5 flex items-center gap-2">
+                  <button id="btnRetry" class="px-4 py-2 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-400/30 font-semibold">Réessayer</button>
+                  <button id="btnBackMenu" class="px-4 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Menu</button>
+                </div>
+              </div>
+
+              <div id="panelWin" class="hidden max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-950/70 backdrop-blur p-5">
+                <h2 class="text-xl font-semibold">Niveau terminé</h2>
+                <p class="mt-2 text-slate-300">Livraison effectuée. Le client est… un hamster en cravate. Ne pose pas de questions.</p>
+                <p class="mt-2 text-xs text-slate-400">Note: le pseudo / l’enregistrement du score se fait uniquement au <b>Game Over</b> (fin de partie).</p>
+                <div class="mt-4 rounded-xl border border-slate-800/70 bg-slate-900/30 p-3">
+                  <div class="flex items-center justify-between">
+                    <div class="font-semibold">Tableau des scores</div>
+                    <button id="btnClearScores2" class="text-xs px-2 py-1 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Reset</button>
+                  </div>
+                  <ol id="scoreListWin" class="mt-2 text-sm text-slate-300 space-y-1"></ol>
+                </div>
+                <div class="mt-5 flex items-center gap-2">
+                  <button id="btnNext" class="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/25 font-semibold">Niveau suivant</button>
+                  <button id="btnWinMenu" class="px-4 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Menu</button>
+                </div>
+              </div>
+
+              <div id="panelScores" class="hidden max-w-md w-full rounded-2xl border border-slate-700/70 bg-slate-950/70 backdrop-blur p-5">
+                <h2 class="text-xl font-semibold">Tableau des scores</h2>
+                <p class="mt-2 text-slate-300">Local (stocké dans ton navigateur). Pas de serveur, pas de triche… enfin presque.</p>
+                <div class="mt-2 text-xs text-slate-400">Les scores se sauvegardent à la fin de partie (Game Over).</div>
+                <div class="mt-4 rounded-xl border border-slate-800/70 bg-slate-900/30 p-3">
+                  <div class="flex items-center justify-between">
+                    <div class="font-semibold">Top 10</div>
+                    <button id="btnClearScores3" class="text-xs px-2 py-1 rounded-lg bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Reset</button>
+                  </div>
+                  <ol id="scoreListAll" class="mt-2 text-sm text-slate-300 space-y-1"></ol>
+                </div>
+                <div class="mt-5 flex items-center gap-2">
+                  <button id="btnCloseScores" class="px-4 py-2 rounded-xl bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/60">Fermer</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="rounded-2xl border border-slate-800/80 bg-slate-950/30 overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-800/70 bg-slate-950/40">
+            <h3 class="font-semibold">Docs (Phase 0/1 → 2+)</h3>
+            <p class="text-xs text-slate-400">Récap • GDD • Architecture • Plan • Audio • Scores • Power-ups</p>
+          </div>
+          <div id="docs" class="p-4 text-sm leading-relaxed text-slate-200/95 space-y-4">
+            <section>
+              <h4 class="font-semibold text-slate-100">1) Récapitulatif (ce qu’on construit)</h4>
+              <p>Jeu de plateforme 2D horizontal, humoristique, jouable en ouvrant simplement <code>index.html</code> (Canvas 2D + Vanilla JS). Objectif : une expérience "juicy" (feedback/sons/animations) tout en restant lisible et maintenable.</p>
+              <ul class="list-disc pl-5 mt-2 space-y-1 text-slate-300">
+                <li><b>Loop</b> : courir → sauter → combos sur ennemis → ramasser chaussettes → porte.</li>
+                <li><b>Progression</b> : niveaux successifs, difficulté croissante, thèmes visuels distincts + musique qui change.</li>
+                <li><b>Loot</b> : power-ups (style Mario) qui donnent des compétences tant que tu ne prends pas de dégât.</li>
+                <li><b>Score</b> : objets + ennemis + bonus temps + <b>multiplicateurs</b> (combo/chaînes).</li>
+                <li><b>Tableau de scores</b> : localStorage (Top 10) + pseudo <b>uniquement en fin de partie</b> (Game Over).</li>
+                <li><b>Audio</b> : WebAudio synth (musique + SFX) sans assets externes.</li>
+              </ul>
+            </section>
+
+            <section>
+              <h4 class="font-semibold text-slate-100">2) GDD léger (synthèse)</h4>
+              <p><b>Pitch</b> : Capitaine Chaussette traverse des zones ridicules (chantier néon, laverie spatiale, bureau des plaintes…) pour livrer un paquet de chaussettes sales. Les cônes grognons n’ont rien demandé. Toi non plus.</p>
+              <ul class="list-disc pl-5 mt-2 space-y-1 text-slate-300">
+                <li><b>Mécaniques</b> : inertie légère, saut tolérant (coyote + buffer), plateformes, ennemis patrouilleurs, collectibles.</li>
+                <li><b>Power-ups</b> : Turbo, double saut, aimant, casque (1 hit), super-saut.</li>
+                <li><b>Juice</b> : particules, shake, slow-mo court au stomp, popups score, musique.</li>
+                <li><b>Victoire</b> : entrer dans la sortie. <b>Défaite</b> : plus de vies.</li>
+              </ul>
+            </section>
+
+            <section>
+              <h4 class="font-semibold text-slate-100">3) Architecture technique (cible modulaire)</h4>
+              <ul class="list-disc pl-5 mt-2 space-y-1 text-slate-300">
+                <li><b>GameLoop</b> : fixed update + render.</li>
+                <li><b>InputManager</b> : clavier (down + edges).</li>
+                <li><b>AudioManager</b> : WebAudio (master/music/sfx, scheduling, unlock gesture).</li>
+                <li><b>Physics</b> : gravité + collisions AABB (2 passes).</li>
+                <li><b>Entities</b> : Player, Enemy, Collectible, PowerUp + systèmes d’FX.</li>
+                <li><b>LevelManager</b> : données des niveaux + thème (décor/palette + musique).</li>
+                <li><b>UI</b> : états + HUD + leaderboard (localStorage).</li>
+              </ul>
+              <p class="mt-2 text-slate-300"><b>Dépendances</b> : Game → (Input, Audio, Level, Physics, FX) ; Render lit Game/Level ; UI lit/écrit GameState ; Leaderboard = utilitaires + localStorage.</p>
+            </section>
+
+            <section>
+              <h4 class="font-semibold text-slate-100">4) Plan d’implémentation (itératif)</h4>
+              <ol class="list-decimal pl-5 mt-2 space-y-1 text-slate-300">
+                <li>MVP contrôles + collisions (fait).</li>
+                <li>Ennemis/collectibles + fin de niveau (fait).</li>
+                <li><b>Juice</b> (fait) : shake/slow-mo/popup + audio synth.</li>
+                <li><b>Niveaux + thèmes</b> (fait) : plusieurs niveaux, décors variés, musique adaptative.</li>
+                <li><b>Power-ups</b> (fait) : progression de compétences.</li>
+                <li>Prochaines étapes : ennemis volants, pièges, checkpoints, sélection de niveau.</li>
+              </ol>
+            </section>
+
+            <section class="rounded-xl border border-slate-800/70 bg-slate-900/30 p-3">
+              <h4 class="font-semibold text-slate-100">Note audio</h4>
+              <p class="text-slate-300">Les navigateurs bloquent l’audio sans interaction : l’audio se déverrouille au premier clic sur <b>Démarrer</b> / <b>Jouer</b>. Ajuste volume et musique en haut.</p>
+            </section>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="px-4 sm:px-6 py-4 border-t border-slate-800/80 text-xs text-slate-400 bg-slate-950/30">
+      <div class="max-w-6xl mx-auto flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+        <div>Ouvre ce fichier localement : aucun build, aucun serveur requis.</div>
+        <div>Debug: <span class="kbd">F1</span> overlay • <span class="kbd">P</span> particules on/off</div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // =============================
+    // Chaussette Express — Single-file "Juicy" Platformer
+    // Canvas 2D + Vanilla JS + WebAudio synth
+    // Objectif: gameplay lisible, feedback dopamine (sons/shake/slow-mo/popups + power-ups)
+    // =============================
+
+    // ---------- Utils ----------
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const now = () => performance.now();
+    const rand = (a=0,b=1) => a + Math.random()*(b-a);
+
+    function aabbIntersect(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function resolveAABB(mover, colliders) {
+      // Résolution simple en 2 passes: X puis Y.
+      mover.onGround = false;
+
+      // X
+      mover.x += mover.vx;
+      for (const c of colliders) {
+        if (!aabbIntersect(mover, c)) continue;
+        if (mover.vx > 0) mover.x = c.x - mover.w;
+        else if (mover.vx < 0) mover.x = c.x + c.w;
+        mover.vx = 0;
+      }
+
+      // Y
+      mover.y += mover.vy;
+      for (const c of colliders) {
+        if (!aabbIntersect(mover, c)) continue;
+        if (mover.vy > 0) {
+          mover.y = c.y - mover.h;
+          mover.vy = 0;
+          mover.onGround = true;
+        } else if (mover.vy < 0) {
+          mover.y = c.y + c.h;
+          mover.vy = 0;
+        }
+      }
+    }
+
+    function formatScore(n) {
+      return String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function dist2(ax, ay, bx, by) {
+      const dx = ax-bx, dy = ay-by;
+      return dx*dx + dy*dy;
+    }
+
+    // ---------- Input ----------
+    class InputManager {
+      constructor() {
+        this.down = new Set();
+        this.pressed = new Set();
+
+        // Touch virtual keys (for portrait/mobile)
+        this.vDown = new Set();
+        this.vPressed = new Set();
+      
+        window.addEventListener('keydown', (e) => {
+          const k = e.key;
+          if (!this.down.has(k)) this.pressed.add(k);
+          this.down.add(k);
+          if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(k)) e.preventDefault();
+        }, { passive:false });
+
+        window.addEventListener('keyup', (e) => {
+          this.down.delete(e.key);
+        });
+      }
+
+      // --- virtual keys API ---
+      vKeyDown(k) {
+        if (!this.vDown.has(k)) this.vPressed.add(k);
+        this.vDown.add(k);
+      }
+      vKeyUp(k) { this.vDown.delete(k); }
+
+      isDown(key) { return this.down.has(key) || this.vDown.has(key); }
+      wasPressed(key) { return this.pressed.has(key) || this.vPressed.has(key); }
+      endFrame() { this.pressed.clear(); this.vPressed.clear(); }
+
+      axisX() {
+        const left = this.isDown('ArrowLeft') || this.isDown('a') || this.isDown('A');
+        const right = this.isDown('ArrowRight') || this.isDown('d') || this.isDown('D');
+        return (right ? 1 : 0) - (left ? 1 : 0);
+      }
+      jumpPressed() {
+        return this.wasPressed(' ') || this.wasPressed('ArrowUp') || this.wasPressed('w') || this.wasPressed('W');
+      }
+    }
+
+    // ---------- Audio (WebAudio synth, no external assets) ----------
+    class AudioManager {
+      constructor() {
+        this.ctx = null;
+        this.master = null;
+        this.musicGain = null;
+        this.sfxGain = null;
+        this.fxBus = null;
+        this.convolver = null;
+        this._started = false;
+        this.enabled = true;
+        this.musicEnabled = true;
+        this.volume = 0.7;
+
+        this._musicTimer = null;
+        this._musicPhase = 0;
+        this._musicLevelTheme = 0;
+        this._musicBpm = 112;
+      }
+
+      setVolume(v01) {
+        this.volume = clamp(v01, 0, 1);
+        if (this.master) this.master.gain.value = this.enabled ? this.volume : 0;
+      }
+
+      toggleEnabled() {
+        this.enabled = !this.enabled;
+        if (this.master) this.master.gain.value = this.enabled ? this.volume : 0;
+      }
+
+      toggleMusic() {
+        this.musicEnabled = !this.musicEnabled;
+        if (this.musicGain) this.musicGain.gain.value = this.musicEnabled ? 0.45 : 0;
+      }
+
+      async unlock() {
+        if (this._started) return;
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+
+        this.ctx = new AC({ latencyHint: 'interactive' });
+        await this.ctx.resume();
+
+        this.master = this.ctx.createGain();
+        this.master.gain.value = this.enabled ? this.volume : 0;
+
+        this.musicGain = this.ctx.createGain();
+        this.musicGain.gain.value = this.musicEnabled ? 0.45 : 0;
+
+        this.sfxGain = this.ctx.createGain();
+        this.sfxGain.gain.value = 0.9;
+
+        // Simple reverb via generated impulse
+        this.convolver = this.ctx.createConvolver();
+        this.convolver.buffer = this._makeImpulseResponse(1.45, 2.2);
+
+        this.fxBus = this.ctx.createGain();
+        this.fxBus.gain.value = 0.35;
+
+        // Routing: music -> master ; sfx -> master + (small reverb)
+        this.musicGain.connect(this.master);
+        this.sfxGain.connect(this.master);
+        this.sfxGain.connect(this.fxBus);
+        this.fxBus.connect(this.convolver);
+        this.convolver.connect(this.master);
+
+        this.master.connect(this.ctx.destination);
+
+        // tiny silent beep to fully unlock on iOS
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        g.gain.value = 0;
+        o.connect(g); g.connect(this.master);
+        o.start(); o.stop(this.ctx.currentTime + 0.01);
+
+        this._started = true;
+        this.startMusic(0);
+      }
+
+      _makeImpulseResponse(seconds=1.2, decay=2.0) {
+        const rate = this.ctx.sampleRate;
+        const length = Math.floor(rate * seconds);
+        const buffer = this.ctx.createBuffer(2, length, rate);
+        for (let ch=0; ch<2; ch++) {
+          const data = buffer.getChannelData(ch);
+          for (let i=0; i<length; i++) {
+            const t = i / length;
+            const env = Math.pow(1 - t, decay);
+            data[i] = (Math.random()*2 - 1) * env;
+          }
+        }
+        return buffer;
+      }
+
+      _themeBpm(themeIndex) {
+        const bpms = [112, 118, 108, 120, 114, 124, 110, 116];
+        return bpms[themeIndex % bpms.length];
+      }
+
+      setMusicTheme(themeIndex) {
+        this._musicLevelTheme = themeIndex|0;
+        this._musicPhase = 0;
+        this._musicBpm = this._themeBpm(this._musicLevelTheme);
+      }
+
+      startMusic(themeIndex=0) {
+        if (!this.ctx) return;
+        this.setMusicTheme(themeIndex);
+        if (this._musicTimer) clearInterval(this._musicTimer);
+
+        const bpm = this._musicBpm;
+        const step = 60 / bpm / 2; // eighth notes
+        const lookahead = 0.12;
+        let nextTime = this.ctx.currentTime + 0.03;
+
+        const schedule = () => {
+          if (!this.ctx) return;
+          const tNow = this.ctx.currentTime;
+          while (nextTime < tNow + lookahead) {
+            this._scheduleMusicStep(nextTime, this._musicPhase);
+            this._musicPhase = (this._musicPhase + 1) % 32;
+            nextTime += step;
+          }
+        };
+        this._musicTimer = setInterval(schedule, 25);
+      }
+
+      stopMusic() {
+        if (this._musicTimer) clearInterval(this._musicTimer);
+        this._musicTimer = null;
+      }
+
+      _noteHz(n) { return 440 * Math.pow(2, (n-69)/12); }
+
+      _scheduleTone(time, opts) {
+        const { type='sine', freq=440, dur=0.12, gain=0.14, pan=0, filter=0 } = opts;
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        const p = this.ctx.createStereoPanner();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, time);
+
+        if (filter > 0) {
+          const f = this.ctx.createBiquadFilter();
+          f.type = 'lowpass';
+          f.frequency.setValueAtTime(filter, time);
+          o.connect(f); f.connect(g);
+        } else {
+          o.connect(g);
+        }
+
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(gain, time + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+        p.pan.setValueAtTime(pan, time);
+        g.connect(p);
+        p.connect(this.musicGain);
+        o.start(time);
+        o.stop(time + dur + 0.02);
+      }
+
+      _scheduleNoiseHit(time, opts) {
+        const { dur=0.10, gain=0.25, hp=900, lp=6000 } = opts;
+        const len = Math.floor(this.ctx.sampleRate * dur);
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i=0;i<len;i++) data[i] = Math.random()*2-1;
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(gain, time + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+        const hpf = this.ctx.createBiquadFilter();
+        hpf.type='highpass'; hpf.frequency.setValueAtTime(hp, time);
+        const lpf = this.ctx.createBiquadFilter();
+        lpf.type='lowpass'; lpf.frequency.setValueAtTime(lp, time);
+
+        src.connect(hpf); hpf.connect(lpf); lpf.connect(g);
+        g.connect(this.musicGain);
+        src.start(time);
+        src.stop(time + dur + 0.02);
+      }
+
+      _scheduleMusicStep(time, step) {
+        if (!this.musicEnabled) return;
+
+        // Theme chord sets (simple, varied)
+        const themes = [
+          { root: 48, scale:[0,2,3,5,7,10], bass:[0,0,7,5], lead:[0,3,5,7,10,12] }, // chantier néon
+          { root: 55, scale:[0,2,4,7,9,11], bass:[0,0,5,7], lead:[0,2,4,7,9,11,12] }, // laverie spatiale
+          { root: 50, scale:[0,3,5,6,10], bass:[0,6,5,3], lead:[0,3,6,10,12] }, // bureaux
+          { root: 52, scale:[0,2,5,7,9], bass:[0,7,5,9], lead:[0,2,5,7,9,12] }, // égouts
+          { root: 45, scale:[0,2,3,7,8,10], bass:[0,8,7,3], lead:[0,3,7,10,12] }, // usine
+          { root: 57, scale:[0,2,4,6,7,9,11], bass:[0,7,5,4], lead:[0,2,6,9,11,12] }, // fête fiscale
+          { root: 46, scale:[0,2,5,7,10], bass:[0,5,7,10], lead:[0,2,5,7,10,12] }, // frigo
+          { root: 53, scale:[0,3,5,7,10], bass:[0,7,3,5], lead:[0,3,7,10,12] }, // désert
+        ];
+        const th = themes[this._musicLevelTheme % themes.length];
+
+        const bar = Math.floor(step / 8); // 0..3 within 32
+        const sub = step % 8;
+        const chordRoot = th.root + th.bass[bar];
+
+        // Kick on 0 and 4
+        if (sub === 0 || sub === 4) {
+          const f = this._noteHz(chordRoot - 12);
+          this._scheduleTone(time, { type:'sine', freq:f, dur:0.10, gain:0.11, filter:220 });
+          this._scheduleTone(time, { type:'triangle', freq:f*0.5, dur:0.12, gain:0.07, filter:180 });
+        }
+        // Snare-ish on 2 and 6
+        if (sub === 2 || sub === 6) {
+          this._scheduleNoiseHit(time, { dur:0.08, gain:0.08, hp:1500, lp:8000 });
+        }
+        // Hi-hat
+        if (sub % 2 === 1) {
+          this._scheduleNoiseHit(time, { dur:0.04, gain:0.03, hp:5000, lp:12000 });
+        }
+
+        // Bass line
+        if (sub === 0 || sub === 3 || sub === 5) {
+          const bassNote = chordRoot + (sub === 5 ? 7 : 0);
+          this._scheduleTone(time, { type:'sawtooth', freq:this._noteHz(bassNote), dur:0.16, gain:0.045, filter:520, pan:-0.12 });
+        }
+
+        // Lead sparkles
+        if (sub === 1 || sub === 4 || sub === 7) {
+          const idx = (bar*3 + (sub===7?2:sub===4?1:0) + step) % th.lead.length;
+          const note = th.root + 12 + th.lead[idx];
+          this._scheduleTone(time, { type:'square', freq:this._noteHz(note), dur:0.08, gain:0.025, filter:2400, pan:0.22 });
+          this._scheduleTone(time, { type:'triangle', freq:this._noteHz(note+12), dur:0.05, gain:0.016, filter:4200, pan:0.35 });
+        }
+      }
+
+      // ---- SFX ----
+      _sfxTone(time, {freq=440, dur=0.12, type='square', gain=0.25, startMul=1, endMul=1, hp=0, lp=0, pan=0}={}) {
+        if (!this.ctx || !this.enabled) return;
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        const p = this.ctx.createStereoPanner();
+        o.type = type;
+        o.frequency.setValueAtTime(freq*startMul, time);
+        o.frequency.exponentialRampToValueAtTime(freq*Math.max(0.001,endMul), time + dur);
+
+        let node = o;
+        if (hp>0) {
+          const f = this.ctx.createBiquadFilter();
+          f.type='highpass'; f.frequency.setValueAtTime(hp, time);
+          node.connect(f); node = f;
+        }
+        if (lp>0) {
+          const f = this.ctx.createBiquadFilter();
+          f.type='lowpass'; f.frequency.setValueAtTime(lp, time);
+          node.connect(f); node = f;
+        }
+
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(gain, time + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+        p.pan.setValueAtTime(pan, time);
+
+        node.connect(g);
+        g.connect(p);
+        p.connect(this.sfxGain);
+
+        o.start(time);
+        o.stop(time + dur + 0.02);
+      }
+
+      _sfxNoise(time, {dur=0.08, gain=0.18, hp=1200, lp=10000, pan=0}={}) {
+        if (!this.ctx || !this.enabled) return;
+        const len = Math.floor(this.ctx.sampleRate * dur);
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i=0;i<len;i++) data[i] = (Math.random()*2-1) * (1 - i/len);
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(gain, time + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+        const hpf = this.ctx.createBiquadFilter();
+        hpf.type='highpass'; hpf.frequency.setValueAtTime(hp, time);
+        const lpf = this.ctx.createBiquadFilter();
+        lpf.type='lowpass'; lpf.frequency.setValueAtTime(lp, time);
+
+        const p = this.ctx.createStereoPanner();
+        p.pan.setValueAtTime(pan, time);
+
+        src.connect(hpf); hpf.connect(lpf); lpf.connect(g); g.connect(p); p.connect(this.sfxGain);
+        src.start(time);
+        src.stop(time + dur + 0.02);
+      }
+
+      play(name, intensity=1) {
+        if (!this.ctx || !this.enabled) return;
+        const t = this.ctx.currentTime + 0.002;
+        const i = clamp(intensity, 0.4, 1.8);
+
+        switch(name) {
+          case 'ui':
+            this._sfxTone(t, {freq:740, dur:0.06, type:'triangle', gain:0.09*i, startMul:1.2, endMul:1, lp:5000});
+            break;
+          case 'jump':
+            this._sfxTone(t, {freq:520, dur:0.10, type:'square', gain:0.12*i, startMul:1.4, endMul:0.9, lp:3400, pan:-0.1});
+            this._sfxTone(t+0.01, {freq:1040, dur:0.06, type:'triangle', gain:0.06*i, startMul:1.1, endMul:0.85, lp:5200, pan:0.15});
+            break;
+          case 'collect':
+            this._sfxTone(t, {freq:880, dur:0.08, type:'triangle', gain:0.10*i, startMul:1, endMul:1.35, lp:7000, pan:0.22});
+            this._sfxTone(t+0.03, {freq:1320, dur:0.07, type:'sine', gain:0.07*i, startMul:1, endMul:1.1, lp:8000, pan:0.28});
+            break;
+          case 'power':
+            this._sfxTone(t, {freq:660, dur:0.09, type:'triangle', gain:0.11*i, startMul:1.0, endMul:1.4, lp:6000, pan:0.1});
+            this._sfxTone(t+0.06, {freq:990, dur:0.08, type:'square', gain:0.08*i, startMul:1.0, endMul:1.2, lp:6200, pan:0.22});
+            break;
+          case 'powerDown':
+            this._sfxTone(t, {freq:360, dur:0.16, type:'sawtooth', gain:0.09*i, startMul:1.0, endMul:0.55, lp:1600});
+            this._sfxNoise(t+0.01, {dur:0.12, gain:0.06*i, hp:800, lp:6000});
+            break;
+          case 'stomp':
+            this._sfxTone(t, {freq:120, dur:0.12, type:'sine', gain:0.18*i, startMul:1.6, endMul:0.8, lp:320});
+            this._sfxNoise(t+0.01, {dur:0.09, gain:0.10*i, hp:900, lp:6000});
+            break;
+          case 'hurt':
+            this._sfxNoise(t, {dur:0.14, gain:0.14*i, hp:600, lp:9000});
+            this._sfxTone(t, {freq:260, dur:0.18, type:'sawtooth', gain:0.09*i, startMul:1.0, endMul:0.55, lp:900});
+            break;
+          case 'win':
+            this._sfxTone(t, {freq:660, dur:0.10, type:'triangle', gain:0.10*i, startMul:1.0, endMul:1.5, lp:6000});
+            this._sfxTone(t+0.10, {freq:880, dur:0.12, type:'triangle', gain:0.11*i, startMul:1.0, endMul:1.35, lp:7000});
+            this._sfxTone(t+0.22, {freq:1100, dur:0.14, type:'triangle', gain:0.12*i, startMul:1.0, endMul:1.25, lp:8000});
+            break;
+          case 'lose':
+            this._sfxTone(t, {freq:220, dur:0.18, type:'square', gain:0.12*i, startMul:1.0, endMul:0.6, lp:1500});
+            this._sfxTone(t+0.12, {freq:160, dur:0.22, type:'sawtooth', gain:0.10*i, startMul:1.0, endMul:0.55, lp:1100});
+            break;
+        }
+      }
+    }
+
+    // ---------- Particles ----------
+    class ParticleSystem {
+      constructor() {
+        this.enabled = true;
+        this.particles = [];
+      }
+      burst(x, y, baseColor, count=12, power=2.3, size=1.0) {
+        if (!this.enabled) return;
+        for (let i=0;i<count;i++) {
+          const a = Math.random() * Math.PI * 2;
+          const s = (0.7 + Math.random()*1.2) * power;
+          this.particles.push({
+            x, y,
+            vx: Math.cos(a)*s,
+            vy: Math.sin(a)*s - 1.4,
+            r: (1 + Math.random()*2) * size,
+            life: 0.45 + Math.random()*0.30,
+            t: 0,
+            color: baseColor
+          });
+        }
+      }
+      trail(x, y, baseColor) {
+        if (!this.enabled) return;
+        if (Math.random() > 0.7) return;
+        this.particles.push({
+          x: x + rand(-2,2),
+          y: y + rand(-2,2),
+          vx: rand(-0.2,0.2),
+          vy: rand(0.1,0.6),
+          r: rand(0.8,1.7),
+          life: rand(0.18,0.28),
+          t: 0,
+          color: baseColor
+        });
+      }
+      update(dt) {
+        const g = 18;
+        for (const p of this.particles) {
+          p.t += dt;
+          p.vy += g * dt * 0.35;
+          p.x += p.vx;
+          p.y += p.vy;
+        }
+        this.particles = this.particles.filter(p => p.t < p.life);
+      }
+      render(ctx, camera) {
+        if (!this.enabled) return;
+        for (const p of this.particles) {
+          const k = 1 - (p.t / p.life);
+          ctx.globalAlpha = k;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x - camera.x, p.y - camera.y, p.r * (0.75 + 0.8*k), 0, Math.PI*2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ---------- Floating text (dopamine popups) ----------
+    class FloatingTextSystem {
+      constructor() { this.items = []; }
+      push(x, y, text, color='rgba(248,250,252,0.95)', size=14, life=0.7) {
+        this.items.push({ x, y, text, color, size, life, t:0, vy: -30 - Math.random()*25 });
+      }
+      update(dt) {
+        for (const it of this.items) {
+          it.t += dt;
+          it.y += it.vy * dt;
+          it.x += Math.sin(it.t*10) * dt * 10;
+        }
+        this.items = this.items.filter(it => it.t < it.life);
+      }
+      render(ctx, camera) {
+        for (const it of this.items) {
+          const k = 1 - it.t/it.life;
+          ctx.globalAlpha = k;
+          ctx.fillStyle = it.color;
+          ctx.font = `bold ${Math.floor(it.size)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+          ctx.fillText(it.text, Math.round(it.x - camera.x), Math.round(it.y - camera.y));
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ---------- Leaderboard (localStorage) ----------
+    const SCORE_KEY = 'chaussette_scores_v2';
+
+    function loadScores() {
+      try {
+        const raw = localStorage.getItem(SCORE_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return [];
+        return arr.filter(x => x && typeof x.score === 'number').slice(0, 50);
+      } catch {
+        return [];
+      }
+    }
+
+    function saveScore(entry) {
+      const list = loadScores();
+      list.push(entry);
+      list.sort((a,b) => b.score - a.score);
+      const trimmed = list.slice(0, 10);
+      localStorage.setItem(SCORE_KEY, JSON.stringify(trimmed));
+      return trimmed;
+    }
+
+    function clearScores() {
+      localStorage.removeItem(SCORE_KEY);
+      return [];
+    }
+
+    function renderScoreList(elList, scores) {
+      elList.innerHTML = '';
+      if (!scores.length) {
+        const li = document.createElement('li');
+        li.className = 'text-slate-400';
+        li.textContent = 'Aucun score pour l’instant. Va chercher ta dopamine.';
+        elList.appendChild(li);
+        return;
+      }
+      scores.forEach((s, i) => {
+        const li = document.createElement('li');
+        li.className = 'flex items-center justify-between gap-3';
+        const left = document.createElement('div');
+        left.innerHTML = `<span class="text-slate-400">#${i+1}</span> <b class="text-slate-100">${escapeHtml(s.name || 'Anonyme')}</b> <span class="text-slate-400">(lvl ${s.level})</span>`;
+        const right = document.createElement('div');
+        right.className = 'font-semibold text-slate-100';
+        right.textContent = formatScore(s.score);
+        li.appendChild(left);
+        li.appendChild(right);
+        elList.appendChild(li);
+      });
+    }
+
+    // ---------- Themes ----------
+    function theme(name, bgA, bgB, accent, deco) {
+      return { name, bgA, bgB, accent, deco };
+    }
+
+    const THEMES = [
+      theme('Chantier néon', '#070A12', '#0B1226', 'rgba(34,211,238,1)', 'cranes'),
+      theme('Laverie spatiale', '#050B16', '#110B2A', 'rgba(167,139,250,1)', 'stars'),
+      theme('Bureau des plaintes', '#060A10', '#0D1A1B', 'rgba(251,146,60,1)', 'paper'),
+      theme('Égouts arc-en-ciel', '#070A12', '#0F172A', 'rgba(34,197,94,1)', 'bubbles'),
+      theme('Usine des chaussettes', '#070A12', '#1A0B12', 'rgba(244,63,94,1)', 'gears'),
+      theme('Fête foraine fiscale', '#090712', '#1B0B2A', 'rgba(250,204,21,1)', 'confetti'),
+      theme('Frigo polaire', '#021017', '#052233', 'rgba(56,189,248,1)', 'snow'),
+      theme('Désert de miettes', '#120B06', '#1B1407', 'rgba(251,191,36,1)', 'crumbs'),
+    ];
+
+    const POWER_TYPES = Object.freeze({ TURBO:'turbo', FEATHER:'feather', MAGNET:'magnet', HELMET:'helmet', SPRING:'spring' });
+
+    function powerLabel(type) {
+      switch(type) {
+        case POWER_TYPES.TURBO: return '☕ Turbo';
+        case POWER_TYPES.FEATHER: return '🪶 Double saut';
+        case POWER_TYPES.MAGNET: return '🧲 Aimant';
+        case POWER_TYPES.HELMET: return '🪖 Casque';
+        case POWER_TYPES.SPRING: return '🌀 Ressort';
+        default: return '—';
+      }
+    }
+
+    function powerColor(type) {
+      switch(type) {
+        case POWER_TYPES.TURBO: return 'rgba(250,204,21,1)';
+        case POWER_TYPES.FEATHER: return 'rgba(248,250,252,1)';
+        case POWER_TYPES.MAGNET: return 'rgba(244,63,94,1)';
+        case POWER_TYPES.HELMET: return 'rgba(251,146,60,1)';
+        case POWER_TYPES.SPRING: return 'rgba(34,197,94,1)';
+        default: return 'rgba(34,211,238,1)';
+      }
+    }
+
+    // ---------- Level data ----------
+    function makeLevel({ name, width, themeIndex, platforms, socks, enemies, exit, spawn, movers=[], powerups=[] }) {
+      return {
+        name,
+        width,
+        themeIndex,
+        platforms: platforms.map(p => ({...p})),
+        movers: movers.map(m => ({...m})),
+        socks: socks.map(p => ({...p, w:14, h:14, taken:false, spin:rand(0, Math.PI*2)})),
+        powerups: powerups.map(p => ({...p, w:16, h:16, taken:false, spin:rand(0, Math.PI*2)})),
+        enemies: enemies.map(e => ({...e, w:22, h:22, alive:true, kind:e.kind||'cone'})),
+        exit: {...exit},
+        spawn: {...spawn},
+      };
+    }
+
+    function makeLevels() {
+      // Note: y=380 sol. width ~ 2100-3800.
+      const L = [];
+
+      // Level 1 — chantier
+      L.push(makeLevel({
+        name: 'Chantier N°1 : La rampe de la honte',
+        width: 2200,
+        themeIndex: 0,
+        platforms: [
+          {x:-200,y:380,w:2400,h:80,kind:'ground'},
+          {x:280,y:300,w:120,h:18,kind:'plat'},
+          {x:470,y:260,w:140,h:18,kind:'plat'},
+          {x:680,y:320,w:140,h:18,kind:'plat'},
+          {x:920,y:290,w:160,h:18,kind:'plat'},
+          {x:1210,y:250,w:140,h:18,kind:'plat'},
+          {x:1460,y:310,w:180,h:18,kind:'plat'},
+        ],
+        socks: [
+          {x:320,y:260},{x:520,y:220},{x:730,y:280},{x:960,y:250},{x:1260,y:210},{x:1520,y:270},{x:1750,y:340},
+        ],
+        powerups: [
+          {x:610,y:285,type:POWER_TYPES.HELMET},
+        ],
+        enemies: [
+          {x:610,y:0,vx:0.85,vy:0},
+          {x:1100,y:0,vx:-0.75,vy:0},
+          {x:1580,y:0,vx:0.95,vy:0},
+        ],
+        exit: {x:2050,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 2 — chantier (escalier)
+      L.push(makeLevel({
+        name: "Chantier N°2 : L'escalier du regret",
+        width: 2700,
+        themeIndex: 0,
+        platforms: [
+          {x:-200,y:380,w:3000,h:80,kind:'ground'},
+          {x:260,y:320,w:100,h:18,kind:'plat'},
+          {x:420,y:280,w:110,h:18,kind:'plat'},
+          {x:600,y:240,w:110,h:18,kind:'plat'},
+          {x:780,y:280,w:110,h:18,kind:'plat'},
+          {x:960,y:320,w:110,h:18,kind:'plat'},
+          {x:1200,y:300,w:160,h:18,kind:'plat'},
+          {x:1460,y:260,w:140,h:18,kind:'plat'},
+          {x:1680,y:300,w:160,h:18,kind:'plat'},
+          {x:1950,y:250,w:140,h:18,kind:'plat'},
+          {x:2200,y:300,w:160,h:18,kind:'plat'},
+        ],
+        socks: [
+          {x:300,y:290},{x:460,y:250},{x:640,y:210},{x:820,y:250},{x:980,y:290},{x:1260,y:270},{x:1510,y:230},{x:1750,y:270},{x:2010,y:220},{x:2260,y:270},
+        ],
+        powerups: [
+          {x:980,y:295,type:POWER_TYPES.TURBO},
+        ],
+        enemies: [
+          {x:520,y:0,vx:1.05,vy:0},
+          {x:980,y:0,vx:-1.10,vy:0},
+          {x:1400,y:0,vx:1.15,vy:0},
+          {x:1860,y:0,vx:-1.0,vy:0},
+        ],
+        exit: {x:2550,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 3 — laverie spatiale (plateformes mobiles)
+      L.push(makeLevel({
+        name: 'Laverie spatiale : Le tambour du destin',
+        width: 3200,
+        themeIndex: 1,
+        platforms: [
+          {x:-200,y:380,w:3600,h:80,kind:'ground'},
+          {x:320,y:310,w:140,h:18,kind:'plat'},
+          {x:560,y:270,w:150,h:18,kind:'plat'},
+          {x:820,y:240,w:140,h:18,kind:'plat'},
+          {x:1120,y:280,w:180,h:18,kind:'plat'},
+          {x:1460,y:250,w:150,h:18,kind:'plat'},
+          {x:1750,y:300,w:200,h:18,kind:'plat'},
+          {x:2100,y:260,w:180,h:18,kind:'plat'},
+          {x:2460,y:310,w:220,h:18,kind:'plat'},
+        ],
+        movers: [
+          {x:980,y:320,w:130,h:16,kind:'mover', axis:'y', amp:46, speed:1.25, phase:0.2},
+          {x:1560,y:320,w:130,h:16,kind:'mover', axis:'x', amp:110, speed:0.9, phase:1.1},
+        ],
+        socks: [
+          {x:380,y:280},{x:620,y:240},{x:860,y:210},{x:980,y:290},{x:1180,y:250},{x:1510,y:220},{x:1600,y:290},{x:2140,y:230},{x:2520,y:280},{x:2800,y:340},
+        ],
+        powerups: [
+          {x:1600,y:295,type:POWER_TYPES.FEATHER},
+        ],
+        enemies: [
+          {x:740,y:0,vx:1.15,vy:0},
+          {x:1320,y:0,vx:-1.2,vy:0},
+          {x:2060,y:0,vx:1.25,vy:0},
+          {x:2680,y:0,vx:-1.15,vy:0},
+        ],
+        exit: {x:3050,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 4 — bureau (paliers serrés)
+      L.push(makeLevel({
+        name: 'Bureau des plaintes : Couloir du karma',
+        width: 3400,
+        themeIndex: 2,
+        platforms: [
+          {x:-200,y:380,w:3800,h:80,kind:'ground'},
+          {x:280,y:320,w:120,h:18,kind:'plat'},
+          {x:460,y:320,w:120,h:18,kind:'plat'},
+          {x:640,y:290,w:120,h:18,kind:'plat'},
+          {x:820,y:260,w:120,h:18,kind:'plat'},
+          {x:1000,y:230,w:120,h:18,kind:'plat'},
+          {x:1180,y:260,w:120,h:18,kind:'plat'},
+          {x:1360,y:290,w:120,h:18,kind:'plat'},
+          {x:1540,y:320,w:120,h:18,kind:'plat'},
+          {x:1820,y:300,w:220,h:18,kind:'plat'},
+          {x:2160,y:260,w:160,h:18,kind:'plat'},
+          {x:2440,y:220,w:160,h:18,kind:'plat'},
+          {x:2720,y:260,w:160,h:18,kind:'plat'},
+          {x:3000,y:300,w:220,h:18,kind:'plat'},
+        ],
+        socks: [
+          {x:320,y:290},{x:500,y:290},{x:680,y:260},{x:860,y:230},{x:1040,y:200},{x:1400,y:260},{x:1900,y:270},{x:2200,y:230},{x:2480,y:190},{x:3040,y:270},{x:3260,y:340},
+        ],
+        powerups: [
+          {x:2200,y:235,type:POWER_TYPES.MAGNET},
+        ],
+        enemies: [
+          {x:900,y:0,vx:1.25,vy:0},
+          {x:1700,y:0,vx:-1.3,vy:0},
+          {x:2350,y:0,vx:1.35,vy:0},
+          {x:2890,y:0,vx:-1.25,vy:0},
+        ],
+        exit: {x:3250,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 5 — égouts (long, plus d'ennemis)
+      L.push(makeLevel({
+        name: 'Égouts arc-en-ciel : La glissade honorable',
+        width: 3600,
+        themeIndex: 3,
+        platforms: [
+          {x:-200,y:380,w:4100,h:80,kind:'ground'},
+          {x:320,y:300,w:180,h:18,kind:'plat'},
+          {x:620,y:260,w:180,h:18,kind:'plat'},
+          {x:920,y:320,w:180,h:18,kind:'plat'},
+          {x:1220,y:280,w:180,h:18,kind:'plat'},
+          {x:1520,y:240,w:180,h:18,kind:'plat'},
+          {x:1820,y:280,w:180,h:18,kind:'plat'},
+          {x:2120,y:320,w:180,h:18,kind:'plat'},
+          {x:2420,y:280,w:180,h:18,kind:'plat'},
+          {x:2720,y:240,w:180,h:18,kind:'plat'},
+          {x:3020,y:280,w:180,h:18,kind:'plat'},
+          {x:3320,y:320,w:180,h:18,kind:'plat'},
+        ],
+        movers: [
+          {x:1650,y:330,w:140,h:16,kind:'mover', axis:'y', amp:56, speed:1.05, phase:0.6},
+        ],
+        socks: [
+          {x:380,y:270},{x:680,y:230},{x:980,y:290},{x:1280,y:250},{x:1580,y:210},{x:1880,y:250},{x:2180,y:290},{x:2480,y:250},{x:2780,y:210},{x:3080,y:250},{x:3380,y:290},{x:3520,y:340},
+        ],
+        powerups: [
+          {x:1880,y:255,type:POWER_TYPES.SPRING},
+        ],
+        enemies: [
+          {x:560,y:0,vx:1.35,vy:0},
+          {x:1140,y:0,vx:-1.35,vy:0},
+          {x:1700,y:0,vx:1.45,vy:0},
+          {x:2260,y:0,vx:-1.45,vy:0},
+          {x:2820,y:0,vx:1.55,vy:0},
+          {x:3240,y:0,vx:-1.55,vy:0},
+        ],
+        exit: {x:3450,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 6 — usine (plus nerveux)
+      L.push(makeLevel({
+        name: 'Usine : La presse à chaussettes',
+        width: 3200,
+        themeIndex: 4,
+        platforms: [
+          {x:-200,y:380,w:3600,h:80,kind:'ground'},
+          {x:280,y:310,w:160,h:18,kind:'plat'},
+          {x:560,y:270,w:160,h:18,kind:'plat'},
+          {x:860,y:240,w:160,h:18,kind:'plat'},
+          {x:1160,y:270,w:160,h:18,kind:'plat'},
+          {x:1460,y:310,w:160,h:18,kind:'plat'},
+          {x:1760,y:290,w:160,h:18,kind:'plat'},
+          {x:2060,y:250,w:160,h:18,kind:'plat'},
+          {x:2360,y:290,w:160,h:18,kind:'plat'},
+          {x:2660,y:310,w:180,h:18,kind:'plat'},
+        ],
+        movers: [
+          {x:1320,y:330,w:150,h:16,kind:'mover', axis:'x', amp:140, speed:1.2, phase:0.4},
+        ],
+        socks: [
+          {x:320,y:280},{x:610,y:240},{x:910,y:210},{x:1210,y:240},{x:1510,y:280},{x:1820,y:260},{x:2120,y:220},{x:2420,y:260},{x:2700,y:280},{x:3020,y:340},
+        ],
+        powerups: [
+          {x:1210,y:245,type:POWER_TYPES.HELMET},
+        ],
+        enemies: [
+          {x:520,y:0,vx:1.55,vy:0},
+          {x:1020,y:0,vx:-1.45,vy:0},
+          {x:1640,y:0,vx:1.60,vy:0},
+          {x:2240,y:0,vx:-1.55,vy:0},
+          {x:2840,y:0,vx:1.65,vy:0},
+        ],
+        exit: {x:3000,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 7 — fête fiscale (beaucoup de loot/score)
+      L.push(makeLevel({
+        name: 'Fête fiscale : Le manège des formulaires',
+        width: 3400,
+        themeIndex: 5,
+        platforms: [
+          {x:-200,y:380,w:3800,h:80,kind:'ground'},
+          {x:320,y:300,w:180,h:18,kind:'plat'},
+          {x:620,y:260,w:180,h:18,kind:'plat'},
+          {x:920,y:220,w:180,h:18,kind:'plat'},
+          {x:1220,y:260,w:180,h:18,kind:'plat'},
+          {x:1520,y:300,w:180,h:18,kind:'plat'},
+          {x:1820,y:270,w:180,h:18,kind:'plat'},
+          {x:2120,y:240,w:180,h:18,kind:'plat'},
+          {x:2420,y:270,w:180,h:18,kind:'plat'},
+          {x:2720,y:300,w:180,h:18,kind:'plat'},
+          {x:3020,y:270,w:220,h:18,kind:'plat'},
+        ],
+        socks: [
+          {x:380,y:270},{x:680,y:230},{x:980,y:190},{x:1280,y:230},{x:1580,y:270},{x:1880,y:240},{x:2180,y:210},{x:2480,y:240},{x:2780,y:270},{x:3100,y:240},{x:3300,y:340},
+        ],
+        powerups: [
+          {x:980,y:195,type:POWER_TYPES.TURBO},
+          {x:2180,y:215,type:POWER_TYPES.MAGNET},
+        ],
+        enemies: [
+          {x:760,y:0,vx:1.6,vy:0},
+          {x:1460,y:0,vx:-1.6,vy:0},
+          {x:2320,y:0,vx:1.7,vy:0},
+          {x:2940,y:0,vx:-1.7,vy:0},
+        ],
+        exit: {x:3250,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Level 8 — frigo (plateformes mobiles verticales)
+      L.push(makeLevel({
+        name: 'Frigo polaire : La chambre froide émotionnelle',
+        width: 3600,
+        themeIndex: 6,
+        platforms: [
+          {x:-200,y:380,w:4100,h:80,kind:'ground'},
+          {x:300,y:310,w:160,h:18,kind:'plat'},
+          {x:620,y:270,w:160,h:18,kind:'plat'},
+          {x:940,y:230,w:160,h:18,kind:'plat'},
+          {x:1260,y:270,w:160,h:18,kind:'plat'},
+          {x:1580,y:310,w:160,h:18,kind:'plat'},
+          {x:2100,y:310,w:160,h:18,kind:'plat'},
+          {x:2420,y:270,w:160,h:18,kind:'plat'},
+          {x:2740,y:230,w:160,h:18,kind:'plat'},
+          {x:3060,y:270,w:160,h:18,kind:'plat'},
+          {x:3380,y:310,w:160,h:18,kind:'plat'},
+        ],
+        movers: [
+          {x:1840,y:320,w:150,h:16,kind:'mover', axis:'y', amp:70, speed:1.15, phase:0.2},
+          {x:2920,y:320,w:150,h:16,kind:'mover', axis:'y', amp:60, speed:1.35, phase:1.1},
+        ],
+        socks: [
+          {x:360,y:280},{x:680,y:240},{x:1000,y:200},{x:1320,y:240},{x:1640,y:280},{x:1840,y:290},{x:2140,y:280},{x:2480,y:240},{x:2800,y:200},{x:3120,y:240},{x:3440,y:280},{x:3520,y:340},
+        ],
+        powerups: [
+          {x:2800,y:205,type:POWER_TYPES.FEATHER},
+        ],
+        enemies: [
+          {x:560,y:0,vx:1.65,vy:0},
+          {x:1140,y:0,vx:-1.65,vy:0},
+          {x:1700,y:0,vx:1.75,vy:0},
+          {x:2260,y:0,vx:-1.75,vy:0},
+          {x:3240,y:0,vx:-1.85,vy:0},
+        ],
+        exit: {x:3500,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      // Bonus: Level 9 — désert (épilogue)
+      L.push(makeLevel({
+        name: 'Désert : Les miettes de la dignité',
+        width: 3800,
+        themeIndex: 7,
+        platforms: [
+          {x:-200,y:380,w:4300,h:80,kind:'ground'},
+          {x:360,y:300,w:200,h:18,kind:'plat'},
+          {x:720,y:260,w:200,h:18,kind:'plat'},
+          {x:1080,y:300,w:200,h:18,kind:'plat'},
+          {x:1440,y:260,w:200,h:18,kind:'plat'},
+          {x:1800,y:220,w:200,h:18,kind:'plat'},
+          {x:2160,y:260,w:200,h:18,kind:'plat'},
+          {x:2520,y:300,w:200,h:18,kind:'plat'},
+          {x:2880,y:260,w:200,h:18,kind:'plat'},
+          {x:3240,y:220,w:200,h:18,kind:'plat'},
+          {x:3520,y:300,w:200,h:18,kind:'plat'},
+        ],
+        movers: [
+          {x:2000,y:330,w:150,h:16,kind:'mover', axis:'x', amp:160, speed:1.05, phase:0.7},
+        ],
+        socks: [
+          {x:420,y:270},{x:780,y:230},{x:1140,y:270},{x:1500,y:230},{x:1860,y:190},{x:2220,y:230},{x:2580,y:270},{x:2940,y:230},{x:3300,y:190},{x:3560,y:270},{x:3700,y:340},
+        ],
+        powerups: [
+          {x:1860,y:195,type:POWER_TYPES.SPRING},
+          {x:2940,y:235,type:POWER_TYPES.HELMET},
+        ],
+        enemies: [
+          {x:980,y:0,vx:1.75,vy:0},
+          {x:1720,y:0,vx:-1.8,vy:0},
+          {x:2440,y:0,vx:1.85,vy:0},
+          {x:3160,y:0,vx:-1.9,vy:0},
+        ],
+        exit: {x:3650,y:300,w:36,h:80},
+        spawn: {x:80,y:0},
+      }));
+
+      return L;
+    }
+
+    // ---------- Entities ----------
+    class Player {
+      constructor(x, y) {
+        this.w = 18; this.h = 26;
+        this.x = x; this.y = y;
+        this.vx = 0; this.vy = 0;
+        this.onGround = false;
+        this.facing = 1;
+
+        // base feel
+        this.baseMoveSpeed = 2.05;
+        this.accel = 0.35;
+        this.friction = 0.82;
+        this.gravity = 18;
+        this.baseJumpVel = -6.2;
+        this.maxFall = 10.0;
+
+        // coyote & jump buffer
+        this.coyote = 0;
+        this.jumpBuffer = 0;
+
+        // power-ups (style Mario: keep until hit)
+        this.power = null; // one active power
+        this.extraJumpUsed = false;
+
+        // polish/anim
+        this.squash = 0;
+        this.hurtTimer = 0;
+        this.anim = 0;
+        this.powerFlash = 0;
+      }
+
+      bounds() { return {x:this.x, y:this.y, w:this.w, h:this.h}; }
+
+      hasPower(type) { return this.power === type; }
+
+      effectiveMoveSpeed() {
+        let v = this.baseMoveSpeed;
+        if (this.hasPower(POWER_TYPES.TURBO)) v *= 1.35;
+        return v;
+      }
+
+      effectiveJumpVel() {
+        let v = this.baseJumpVel;
+        if (this.hasPower(POWER_TYPES.SPRING)) v *= 1.22;
+        return v;
+      }
+
+      magnetRadius() {
+        return this.hasPower(POWER_TYPES.MAGNET) ? 54 : 0;
+      }
+
+      update(dt, input, level, fx, audio, game) {
+        const ax = input.axisX();
+        if (ax !== 0) this.facing = ax;
+
+        // power flash decay
+        if (this.powerFlash > 0) this.powerFlash = Math.max(0, this.powerFlash - dt);
+
+        // Jump buffer
+        if (input.jumpPressed()) this.jumpBuffer = 0.12;
+        else this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+
+        // Coyote time
+        if (this.onGround) this.coyote = 0.09;
+        else this.coyote = Math.max(0, this.coyote - dt);
+
+        if (this.onGround) this.extraJumpUsed = false;
+
+        // Horizontal
+        const moveSpeed = this.effectiveMoveSpeed();
+        const target = ax * moveSpeed;
+        this.vx = lerp(this.vx, target, 1 - Math.pow(1 - this.accel, dt*60));
+        if (ax === 0) this.vx *= Math.pow(this.friction, dt*60);
+
+        // Gravity
+        this.vy += this.gravity * dt;
+        this.vy = Math.min(this.vy, this.maxFall);
+
+        const jumpVel = this.effectiveJumpVel();
+
+        // Jump (ground/coyote)
+        if (this.jumpBuffer > 0 && this.coyote > 0) {
+          this.vy = jumpVel;
+          this.jumpBuffer = 0;
+          this.coyote = 0;
+          this.squash = -0.95;
+          fx.burst(this.x + this.w/2, this.y + this.h, 'rgba(56,189,248,1)', 12, 2.2, 1.0);
+          audio?.play('jump', 1.0);
+        } else if (this.jumpBuffer > 0 && !this.onGround && this.hasPower(POWER_TYPES.FEATHER) && !this.extraJumpUsed) {
+          // Double jump
+          this.extraJumpUsed = true;
+          this.vy = jumpVel * 0.92;
+          this.jumpBuffer = 0;
+          this.squash = -0.80;
+          fx.burst(this.x + this.w/2, this.y + this.h/2, 'rgba(248,250,252,1)', 14, 2.5, 1.0);
+          audio?.play('jump', 1.05);
+          game.shake = Math.min(8, game.shake + 2.0);
+        }
+
+        // Integrate + collisions
+        resolveAABB(this, level.colliders);
+
+        // animation time
+        const speed = Math.abs(this.vx);
+        if (this.onGround && speed > 0.15) this.anim += dt * (8 + speed*6);
+        else this.anim += dt * 2;
+
+        // Squash & stretch decay
+        this.squash = lerp(this.squash, this.onGround ? 0.25 : 0, 1 - Math.pow(0.88, dt*60));
+        if (this.onGround) this.squash = lerp(this.squash, 0, 1 - Math.pow(0.78, dt*60));
+        else this.squash = lerp(this.squash, 0, 1 - Math.pow(0.86, dt*60));
+
+        // trail
+        const trailColor = this.power ? powerColor(this.power).replace(',1)',',0.9)') : 'rgba(34,211,238,0.9)';
+        if (!this.onGround && this.vy < -0.2) fx.trail(this.x + this.w/2, this.y + this.h, trailColor);
+
+        if (this.hurtTimer > 0) this.hurtTimer = Math.max(0, this.hurtTimer - dt);
+
+        // small landing thud
+        if (this.onGround && Math.abs(this.vx) > 1.6 && Math.random() < 0.02) {
+          fx.trail(this.x + this.w/2, this.y + this.h, 'rgba(248,250,252,0.9)');
+        }
+      }
+
+      render(ctx, camera) {
+        const x = Math.round(this.x - camera.x);
+        const y = Math.round(this.y - camera.y);
+
+        const s = clamp(this.squash, -1, 1);
+        const scaleY = 1 + s * 0.12;
+        const scaleX = 1 - s * 0.08;
+
+        const bob = Math.sin(this.anim * 1.2) * (this.onGround ? 1.2 : 0.4);
+
+        ctx.save();
+        ctx.translate(x + this.w/2, y + this.h/2 + bob);
+        ctx.scale(scaleX, scaleY);
+        ctx.translate(-(x + this.w/2), -(y + this.h/2));
+
+        const hurt = this.hurtTimer > 0;
+
+        // body
+        let body = hurt ? 'rgba(251,113,133,1)' : 'rgba(167,139,250,1)';
+        if (this.power && !hurt) body = powerColor(this.power).replace(',1)',',0.92)');
+        if (this.powerFlash > 0) {
+          const k = 0.5 + 0.5*Math.sin(this.powerFlash*36);
+          body = `rgba(248,250,252,${0.35 + 0.45*k})`;
+        }
+        ctx.fillStyle = body;
+        ctx.fillRect(x, y, this.w, this.h);
+
+        // stripe
+        ctx.fillStyle = 'rgba(34,211,238,1)';
+        const stripeOffset = Math.floor((this.anim*2) % 3);
+        ctx.fillRect(x+2, y+3+stripeOffset, this.w-4, 4);
+
+        // shoes
+        ctx.fillStyle = 'rgba(15,23,42,1)';
+        const step = Math.sin(this.anim * 4) * (this.onGround ? 2.0 : 0.3);
+        ctx.fillRect(x+2, y+this.h-3, 5, 3);
+        ctx.fillRect(x+this.w-7, y+this.h-3, 5, 3);
+        if (this.onGround) {
+          ctx.fillRect(x+3, y+this.h-5, 3, 2);
+          ctx.fillRect(x+this.w-6, y+this.h-5, 3, 2);
+          // fake legs movement
+          ctx.fillStyle = 'rgba(15,23,42,0.28)';
+          ctx.fillRect(x+5, y+this.h-10, 2, 5 + Math.floor(step));
+          ctx.fillRect(x+this.w-7, y+this.h-10, 2, 5 - Math.floor(step));
+        }
+
+        // face
+        ctx.fillStyle = 'rgba(15,23,42,1)';
+        const eyeY = y + 11;
+        const eyeX1 = x + (this.facing > 0 ? 11 : 6);
+        const eyeX2 = eyeX1 + 4;
+        const blink = (Math.sin(this.anim*0.7) > 0.985);
+        if (blink) {
+          ctx.fillRect(eyeX1, eyeY+1, 2, 1);
+          ctx.fillRect(eyeX2, eyeY+1, 2, 1);
+        } else {
+          ctx.fillRect(eyeX1, eyeY, 2, 2);
+          ctx.fillRect(eyeX2, eyeY, 2, 2);
+        }
+        ctx.fillRect(x + 7, y + 17, 5, 2);
+
+        // power visual (simple hat/feather/magnet)
+        if (this.power && !hurt) {
+          ctx.globalAlpha = 0.95;
+          if (this.power === POWER_TYPES.HELMET) {
+            ctx.fillStyle = 'rgba(251,146,60,1)';
+            ctx.fillRect(x+3, y-4, this.w-6, 6);
+            ctx.fillStyle = 'rgba(15,23,42,1)';
+            ctx.fillRect(x+6, y-2, this.w-12, 2);
+          } else if (this.power === POWER_TYPES.FEATHER) {
+            ctx.fillStyle = 'rgba(248,250,252,0.95)';
+            ctx.beginPath();
+            ctx.moveTo(x+this.w-4, y-4);
+            ctx.lineTo(x+this.w+3, y+2);
+            ctx.lineTo(x+this.w-2, y+4);
+            ctx.closePath();
+            ctx.fill();
+          } else if (this.power === POWER_TYPES.MAGNET) {
+            ctx.fillStyle = 'rgba(244,63,94,1)';
+            ctx.fillRect(x+6, y-5, 6, 6);
+            ctx.clearRect(x+7, y-4, 4, 3);
+          } else if (this.power === POWER_TYPES.TURBO) {
+            ctx.fillStyle = 'rgba(250,204,21,1)';
+            ctx.fillRect(x+2, y-5, 4, 6);
+            ctx.fillRect(x+this.w-6, y-5, 4, 6);
+          } else if (this.power === POWER_TYPES.SPRING) {
+            ctx.strokeStyle = 'rgba(34,197,94,1)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x+4, y-2);
+            ctx.lineTo(x+this.w-4, y-2);
+            ctx.stroke();
+            ctx.lineWidth = 1;
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        ctx.restore();
+      }
+    }
+
+    class EnemyCone {
+      constructor(data) {
+        Object.assign(this, data);
+        this.gravity = 18;
+        this.onGround = false;
+        this.ouch = 0;
+        this.anim = rand(0, Math.PI*2);
+      }
+      bounds() { return {x:this.x, y:this.y, w:this.w, h:this.h}; }
+      update(dt, level) {
+        if (!this.alive) return;
+        this.anim += dt * 4;
+        this.vy += this.gravity * dt;
+        this.vy = Math.min(this.vy, 10);
+
+        resolveAABB(this, level.colliders);
+
+        // edge detect
+        const dir = Math.sign(this.vx) || 1;
+        const probe = { x: this.x + (dir>0 ? this.w+2 : -2), y: this.y + this.h + 2, w: 2, h: 2 };
+        let supported = false;
+        for (const p of level.colliders) {
+          if (aabbIntersect(probe, p)) { supported = true; break; }
+        }
+        if (!supported && this.onGround) this.vx *= -1;
+
+        // if bumped into wall
+        if (Math.abs(this.vx) < 0.05) this.vx = dir * (0.85 + Math.sin(this.anim)*0.08);
+
+        if (this.ouch > 0) this.ouch = Math.max(0, this.ouch - dt);
+      }
+      render(ctx, camera) {
+        if (!this.alive) return;
+        const x = Math.round(this.x - camera.x);
+        const y = Math.round(this.y - camera.y);
+        const bounce = Math.sin(this.anim) * 1.4;
+
+        ctx.save();
+        ctx.translate(0, bounce);
+
+        ctx.fillStyle = this.ouch>0 ? 'rgba(251,113,133,1)' : 'rgba(251,146,60,1)';
+        ctx.beginPath();
+        ctx.moveTo(x + this.w/2, y);
+        ctx.lineTo(x + this.w, y + this.h);
+        ctx.lineTo(x, y + this.h);
+        ctx.closePath();
+        ctx.fill();
+
+        // angry face
+        ctx.fillStyle = 'rgba(15,23,42,1)';
+        ctx.fillRect(x+7, y+12, 2, 2);
+        ctx.fillRect(x+13, y+12, 2, 2);
+        ctx.fillRect(x+9, y+16, 6, 2);
+
+        ctx.restore();
+      }
+    }
+
+    // ---------- Game core ----------
+    const GameState = Object.freeze({ MENU:'menu', PLAYING:'playing', PAUSED:'paused', WIN:'win', GAMEOVER:'gameover', SCORES:'scores' });
+
+    class Game {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d', { alpha:false });
+        this.dpr = 1;
+
+        this.input = new InputManager();
+        this.audio = new AudioManager();
+
+        this.fx = new ParticleSystem();
+        this.textFx = new FloatingTextSystem();
+
+        this.levelIndex = 0;
+        this.levels = makeLevels();
+        this.level = null;
+
+        this.player = null;
+        this.camera = {x:0, y:0};
+
+        this.state = GameState.MENU;
+        this.lives = 3;
+        this.score = 0;
+        this.time = 0;
+        this.debug = { show:false };
+
+        // dopamine
+        this.shake = 0;
+        this.shakeX = 0;
+        this.shakeY = 0;
+        this.slowmo = 0;
+
+        // scoring
+        this.comboCount = 0;
+        this.comboTimer = 0;
+        this.pickupChain = 0;
+        this.pickupTimer = 0;
+
+        this._last = now();
+        this._accum = 0;
+        this.fixedStep = 1/120;
+
+        this.seed = Math.floor(Math.random()*1e9);
+
+        this.loadLevel(0, true);
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+      }
+
+      loadLevel(index, hardReset=false, carry={}) {
+        this.levelIndex = clamp(index, 0, this.levels.length-1);
+        const base = this.levels[this.levelIndex];
+
+        const theme = THEMES[base.themeIndex % THEMES.length];
+        this.level = {
+          name: base.name,
+          width: base.width,
+          themeIndex: base.themeIndex,
+          theme,
+          platforms: base.platforms.map(p => ({...p})),
+          movers: (base.movers||[]).map(m => ({...m})),
+          socks: base.socks.map(s => ({...s, taken:false, spin: s.spin ?? rand(0, Math.PI*2)})),
+          powerups: (base.powerups||[]).map(p => ({...p, taken:false, spin: p.spin ?? rand(0, Math.PI*2)})),
+          enemies: base.enemies.map(e => new EnemyCone({...e, alive:true})),
+          exit: {...base.exit},
+          spawn: {...base.spawn},
+          decor: this._buildDecor(theme, base.width, this.seed + this.levelIndex*999)
+        };
+
+        // colliders are platforms + movers (updated each frame)
+        this.level.colliders = [...this.level.platforms, ...this.level.movers];
+
+        this.player = new Player(this.level.spawn.x, this.level.spawn.y);
+        if (carry.power) this.player.power = carry.power;
+
+        this.camera.x = 0; this.camera.y = 0;
+        this.time = 0;
+        this.comboCount = 0; this.comboTimer = 0;
+        this.pickupChain = 0; this.pickupTimer = 0;
+        this.shake = 0; this.slowmo = 0;
+
+        // change ambiance/music each level
+        if (this.audio.ctx) this.audio.startMusic(this.level.themeIndex);
+
+        if (hardReset) {
+          this.lives = 3;
+          this.score = 0;
+        } else {
+          if (typeof carry.lives === 'number') this.lives = carry.lives;
+          if (typeof carry.score === 'number') this.score = carry.score;
+        }
+      }
+
+      _buildDecor(theme, width, seed) {
+        let s = seed >>> 0;
+        const rnd = () => (s = (1664525*s + 1013904223)>>>0) / 4294967296;
+        const items = [];
+
+        const count = Math.floor(width / 140);
+        for (let i=0;i<count;i++) {
+          const x = 60 + i*140 + rnd()*80;
+          const y = 40 + rnd()*200;
+          const k = rnd();
+          items.push({ x, y, t: theme.deco, k, seed: rnd() });
+        }
+        return items;
+      }
+
+      resize() {
+        const rect = this.canvas.getBoundingClientRect();
+        this.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        this.canvas.width = Math.floor(rect.width * this.dpr);
+        this.canvas.height = Math.floor(rect.height * this.dpr);
+        this.ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
+      }
+
+      setState(next) {
+        const prev = this.state;
+        this.state = next;
+        updateUIFromGame(this);
+
+        if (next === GameState.PLAYING && prev !== GameState.PLAYING) {
+          this.textFx.push(this.player.x - 20, this.player.y - 40, `NIVEAU ${this.levelIndex+1}`, 'rgba(248,250,252,0.95)', 18, 1.0);
+          this.textFx.push(this.player.x - 20, this.player.y - 20, this.level.name, this.level.theme.accent.replace(',1)',',0.95)'), 13, 1.15);
+        }
+      }
+
+      restartFromMenu() {
+        this.loadLevel(0, true);
+        this.setState(GameState.PLAYING);
+      }
+
+      _updateMovers(dt) {
+        for (const m of this.level.movers) {
+          m._t = (m._t || 0) + dt;
+          const baseX = m.baseX ?? (m.baseX = m.x);
+          const baseY = m.baseY ?? (m.baseY = m.y);
+          const s = Math.sin(m._t * m.speed + m.phase);
+          if (m.axis === 'x') m.x = baseX + s * m.amp;
+          else m.y = baseY + s * m.amp;
+        }
+        this.level.colliders = [...this.level.platforms, ...this.level.movers];
+      }
+
+      currentComboMultiplier() {
+        const base = 1.0;
+        const combo = Math.min(12, this.comboCount);
+        return base + combo * 0.12;
+      }
+
+      applyPower(type) {
+        const prev = this.player.power;
+        this.player.power = type;
+        this.player.powerFlash = 0.6;
+        this.player.extraJumpUsed = false;
+
+        if (prev && prev !== type) {
+          this.textFx.push(this.player.x - 10, this.player.y - 30, 'UPGRADE!', 'rgba(248,250,252,0.95)', 14, 0.85);
+        }
+        this.textFx.push(this.player.x - 10, this.player.y - 50, `POWER: ${powerLabel(type)}`, powerColor(type).replace(',1)',',0.95)'), 14, 1.0);
+        this.fx.burst(this.player.x + this.player.w/2, this.player.y + this.player.h/2, powerColor(type), 26, 3.0, 1.25);
+        this.audio.play('power', 1.1);
+        this.shake = Math.min(14, this.shake + 4.0);
+        this.slowmo = 0.08;
+      }
+
+      update(dt) {
+        if (this.state !== GameState.PLAYING) return;
+
+        if (this.slowmo > 0) {
+          const factor = 0.55;
+          this.slowmo = Math.max(0, this.slowmo - dt);
+          dt *= factor;
+        }
+
+        this.time += dt;
+
+        if (this.input.wasPressed('F1')) this.debug.show = !this.debug.show;
+        if (this.input.wasPressed('p') || this.input.wasPressed('P')) this.fx.enabled = !this.fx.enabled;
+
+        // Reset level (keep run stats + power)
+        if (this.input.wasPressed('r') || this.input.wasPressed('R')) {
+          const keep = { lives:this.lives, score:this.score, power:this.player.power };
+          this.loadLevel(this.levelIndex, false, keep);
+          this.textFx.push(this.player.x, this.player.y-10, 'RESET!', 'rgba(248,250,252,0.9)', 16, 0.6);
+          this.audio.play('ui', 1.0);
+        }
+
+        this._updateMovers(dt);
+
+        // combo decay
+        if (this.comboTimer > 0) this.comboTimer = Math.max(0, this.comboTimer - dt);
+        else if (this.comboCount > 0) this.comboCount = 0;
+
+        // pickup chain
+        if (this.pickupTimer > 0) this.pickupTimer = Math.max(0, this.pickupTimer - dt);
+        else this.pickupChain = 0;
+
+        // Player
+        this.player.update(dt, this.input, this.level, this.fx, this.audio, this);
+
+        // Enemies
+        for (const e of this.level.enemies) e.update(dt, this.level);
+
+        // Power-ups collect
+        for (const p of this.level.powerups) {
+          if (p.taken) continue;
+          p.spin += dt * 5.5;
+          const px = p.x + p.w/2;
+          const py = p.y + p.h/2;
+          // magnet helps vacuum powerups a bit too
+          const magnet = this.player.magnetRadius();
+          const magnetOk = magnet > 0 && dist2(px, py, this.player.x+this.player.w/2, this.player.y+this.player.h/2) < magnet*magnet;
+          if (aabbIntersect(this.player.bounds(), p) || magnetOk) {
+            p.taken = true;
+            this.applyPower(p.type);
+          }
+        }
+
+        // Collect socks
+        const magnet = this.player.magnetRadius();
+        for (const s of this.level.socks) {
+          if (s.taken) continue;
+          s.spin += dt * 6.0;
+
+          const sx = s.x + s.w/2;
+          const sy = s.y + s.h/2;
+          const magnetOk = magnet > 0 && dist2(sx, sy, this.player.x+this.player.w/2, this.player.y+this.player.h/2) < magnet*magnet;
+
+          if (aabbIntersect(this.player.bounds(), s) || magnetOk) {
+            s.taken = true;
+
+            this.pickupChain = Math.min(10, this.pickupChain + 1);
+            this.pickupTimer = 1.0;
+            const chainMul = 1 + this.pickupChain * 0.08;
+
+            const add = Math.floor(100 * chainMul);
+            this.score += add;
+
+            const c = this.player.power ? powerColor(this.player.power) : 'rgba(34,211,238,1)';
+            this.fx.burst(s.x + s.w/2, s.y + s.h/2, c, 18, 2.6, 1.1);
+            this.textFx.push(s.x, s.y - 6, `+${add}`, c.replace(',1)',',0.95)'), 16, 0.7);
+            if (this.pickupChain >= 4) this.textFx.push(s.x+10, s.y - 24, `CHAÎNE x${this.pickupChain}`, 'rgba(167,139,250,0.95)', 14, 0.9);
+
+            this.shake = Math.min(10, this.shake + 2.2);
+            this.audio.play('collect', 1.0 + this.pickupChain*0.03);
+          }
+        }
+
+        // Enemy interactions
+        const pb = this.player.bounds();
+        for (const e of this.level.enemies) {
+          if (!e.alive) continue;
+          const eb = e.bounds();
+          if (!aabbIntersect(pb, eb)) continue;
+
+          const playerFalling = this.player.vy > 0.5;
+          const stompZone = pb.y + pb.h - 6;
+          const stomp = playerFalling && stompZone <= eb.y + 6;
+
+          if (stomp) {
+            e.alive = false;
+            this.player.vy = -5.0;
+
+            this.comboCount = Math.min(20, this.comboCount + 1);
+            this.comboTimer = 1.65;
+            const mul = this.currentComboMultiplier();
+            const add = Math.floor(150 * mul);
+            this.score += add;
+
+            this.fx.burst(e.x + e.w/2, e.y + e.h/2, 'rgba(251,146,60,1)', 24, 3.0, 1.2);
+            this.textFx.push(e.x, e.y - 10, `+${add}`, 'rgba(251,146,60,0.95)', 16, 0.7);
+            if (this.comboCount >= 2) this.textFx.push(e.x+8, e.y - 28, `COMBO x${mul.toFixed(1)}`, 'rgba(248,250,252,0.95)', 14, 0.9);
+
+            this.shake = Math.min(16, this.shake + 5.2);
+            this.slowmo = 0.14;
+            this.audio.play('stomp', 1.0 + this.comboCount*0.03);
+          } else {
+            this.damagePlayer(false);
+            break;
+          }
+        }
+
+        // Fall out of world
+        if (this.player.y > 700) this.damagePlayer(true);
+
+        // Win condition
+        if (aabbIntersect(this.player.bounds(), this.level.exit)) {
+          const timeBonus = Math.max(0, 1200 - Math.floor(this.time * 22));
+          const socksLeft = this.level.socks.filter(s => !s.taken).length;
+          const cleanBonus = socksLeft === 0 ? 450 : 0;
+          this.score += timeBonus + cleanBonus;
+          this.textFx.push(this.player.x - 30, this.player.y - 30, `BONUS TEMPS +${timeBonus}`, 'rgba(34,197,94,0.95)', 14, 1.0);
+          if (cleanBonus) this.textFx.push(this.player.x - 30, this.player.y - 48, `TOUT RAMASSÉ +${cleanBonus}`, 'rgba(250,204,21,0.95)', 14, 1.0);
+          this.shake = Math.min(18, this.shake + 6);
+          this.audio.play('win', 1.2);
+          this.setState(GameState.WIN);
+        }
+
+        // Camera follow
+        const viewW = this.canvas.getBoundingClientRect().width;
+        const targetX = this.player.x - viewW * 0.35;
+        this.camera.x = clamp(lerp(this.camera.x, targetX, 1 - Math.pow(0.85, dt*60)), 0, this.level.width - viewW);
+        this.camera.y = 0;
+
+        // shake update
+        this.shake = Math.max(0, this.shake - dt*18);
+        const s = this.shake;
+        this.shakeX = (Math.random()*2 - 1) * s;
+        this.shakeY = (Math.random()*2 - 1) * s;
+
+        this.fx.update(dt);
+        this.textFx.update(dt);
+      }
+
+      damagePlayer(hard=false) {
+        if (this.player.hurtTimer > 0) return;
+
+        // Mario-like: if you have a power, you lose power instead of life.
+        if (this.player.power) {
+          const lost = this.player.power;
+          this.player.power = null;
+          this.player.powerFlash = 0;
+          this.player.hurtTimer = 0.65;
+          this.comboCount = 0;
+          this.comboTimer = 0;
+          this.pickupChain = 0;
+          this.pickupTimer = 0;
+
+          this.fx.burst(this.player.x + this.player.w/2, this.player.y + this.player.h/2, powerColor(lost), 30, 3.1, 1.25);
+          this.textFx.push(this.player.x - 20, this.player.y - 28, 'POWER DOWN!', 'rgba(248,250,252,0.95)', 16, 1.0);
+          this.shake = Math.min(20, this.shake + 9);
+          this.audio.play('powerDown', 1.15);
+
+          // small knock
+          this.player.vx *= 0.4;
+          this.player.vy = hard ? -1.0 : -2.4;
+          return;
+        }
+
+        this.lives -= 1;
+        this.player.hurtTimer = 0.85;
+        this.comboCount = 0;
+        this.comboTimer = 0;
+        this.pickupChain = 0;
+        this.pickupTimer = 0;
+
+        this.fx.burst(this.player.x + this.player.w/2, this.player.y + this.player.h/2, 'rgba(251,113,133,1)', 26, 3.2, 1.2);
+        this.textFx.push(this.player.x - 10, this.player.y - 20, '-1 VIE', 'rgba(251,113,133,0.95)', 16, 0.9);
+        this.shake = Math.min(22, this.shake + 10);
+        this.audio.play('hurt', 1.1);
+
+        if (this.lives <= 0) {
+          this.audio.play('lose', 1.2);
+          this.setState(GameState.GAMEOVER);
+          return;
+        }
+
+        // Respawn
+        this.player.x = this.level.spawn.x;
+        this.player.y = this.level.spawn.y;
+        this.player.vx = 0;
+        this.player.vy = hard ? 0 : -2.2;
+      }
+
+      render() {
+        const ctx = this.ctx;
+        const w = this.canvas.getBoundingClientRect().width;
+        const h = this.canvas.getBoundingClientRect().height;
+
+        const th = this.level.theme;
+
+        const grd = ctx.createLinearGradient(0, 0, 0, h);
+        grd.addColorStop(0, th.bgA);
+        grd.addColorStop(1, th.bgB);
+        ctx.fillStyle = grd;
+        ctx.fillRect(0,0,w,h);
+
+        ctx.save();
+        ctx.translate(this.shakeX, this.shakeY);
+
+        this._renderDecor(ctx, w, h);
+
+        for (const p of this.level.platforms) this._renderPlatform(ctx, p);
+        for (const m of this.level.movers) this._renderMover(ctx, m);
+
+        this._renderExit(ctx);
+
+        // Power-ups
+        for (const p of this.level.powerups) {
+          if (p.taken) continue;
+          const x = Math.round(p.x - this.camera.x);
+          const y = Math.round(p.y - this.camera.y);
+          const wiggle = Math.sin(p.spin) * 2.0;
+          ctx.save();
+          ctx.translate(x + p.w/2, y + p.h/2 + wiggle);
+          ctx.rotate(Math.sin(p.spin*0.9) * 0.25);
+          ctx.translate(-(x + p.w/2), -(y + p.h/2));
+
+          // capsule
+          ctx.fillStyle = powerColor(p.type);
+          ctx.fillRect(x, y, p.w, p.h);
+          ctx.fillStyle = 'rgba(15,23,42,1)';
+          // icon
+          if (p.type === POWER_TYPES.TURBO) {
+            ctx.fillRect(x+4, y+3, 8, 2);
+            ctx.fillRect(x+5, y+6, 6, 2);
+            ctx.fillRect(x+6, y+9, 4, 2);
+          } else if (p.type === POWER_TYPES.FEATHER) {
+            ctx.fillRect(x+6, y+3, 2, 10);
+            ctx.fillRect(x+8, y+4, 2, 8);
+          } else if (p.type === POWER_TYPES.MAGNET) {
+            ctx.fillRect(x+4, y+4, 8, 8);
+            ctx.clearRect(x+6, y+5, 4, 4);
+          } else if (p.type === POWER_TYPES.HELMET) {
+            ctx.fillRect(x+4, y+4, 8, 4);
+            ctx.fillRect(x+5, y+8, 6, 4);
+          } else if (p.type === POWER_TYPES.SPRING) {
+            ctx.fillRect(x+4, y+11, 8, 2);
+            ctx.fillRect(x+6, y+4, 4, 2);
+            ctx.fillRect(x+5, y+6, 6, 2);
+            ctx.fillRect(x+6, y+8, 4, 2);
+          }
+
+          ctx.restore();
+        }
+
+        // Collectibles
+        for (const s of this.level.socks) {
+          if (s.taken) continue;
+          const x = Math.round(s.x - this.camera.x);
+          const y = Math.round(s.y - this.camera.y);
+          const wiggle = Math.sin(s.spin) * 2.0;
+          ctx.save();
+          ctx.translate(x + s.w/2, y + s.h/2 + wiggle);
+          ctx.rotate(Math.sin(s.spin*0.7) * 0.35);
+          ctx.translate(-(x + s.w/2), -(y + s.h/2));
+          ctx.fillStyle = 'rgba(34,211,238,1)';
+          ctx.fillRect(x, y, s.w, s.h);
+          ctx.fillStyle = 'rgba(15,23,42,1)';
+          ctx.fillRect(x+3, y+4, 8, 2);
+          ctx.restore();
+        }
+
+        for (const e of this.level.enemies) e.render(ctx, this.camera);
+        this.player.render(ctx, this.camera);
+
+        this.fx.render(ctx, this.camera);
+        this.textFx.render(ctx, this.camera);
+
+        if (this.debug.show) {
+          ctx.strokeStyle = 'rgba(248,250,252,0.25)';
+          const pb = this.player.bounds();
+          ctx.strokeRect(pb.x - this.camera.x, pb.y - this.camera.y, pb.w, pb.h);
+          for (const e of this.level.enemies) {
+            if (!e.alive) continue;
+            const b = e.bounds();
+            ctx.strokeRect(b.x - this.camera.x, b.y - this.camera.y, b.w, b.h);
+          }
+          for (const m of this.level.movers) {
+            ctx.strokeRect(m.x - this.camera.x, m.y - this.camera.y, m.w, m.h);
+          }
+          ctx.fillStyle = 'rgba(248,250,252,0.9)';
+          ctx.font = '12px ui-monospace, monospace';
+          ctx.fillText(`fixed=${this.fixedStep}s particles=${this.fx.particles.length} camX=${this.camera.x.toFixed(1)} shake=${this.shake.toFixed(1)} slowmo=${this.slowmo.toFixed(2)} power=${this.player.power||'none'}`, 10, 18);
+        }
+
+        ctx.restore();
+      }
+
+      _renderPlatform(ctx, p) {
+        const x = Math.round(p.x - this.camera.x);
+        const y = Math.round(p.y - this.camera.y);
+        const th = this.level.theme;
+
+        if (p.kind === 'ground') {
+          ctx.fillStyle = 'rgba(30,41,59,1)';
+          ctx.fillRect(x, y, p.w, p.h);
+          ctx.fillStyle = 'rgba(51,65,85,1)';
+          for (let tx = 0; tx < p.w; tx += 24) ctx.fillRect(x+tx, y, 12, 6);
+          ctx.fillStyle = th.accent.replace(',1)',',0.25)');
+          ctx.fillRect(x, y, p.w, 2);
+        } else {
+          // Slightly different feel per theme
+          const isOffice = this.level.theme.deco === 'paper';
+          const isFactory = this.level.theme.deco === 'gears';
+          const isFridge = this.level.theme.deco === 'snow';
+
+          ctx.fillStyle = isFactory ? 'rgba(30,9,16,1)' : isOffice ? 'rgba(2,6,23,1)' : 'rgba(15,23,42,1)';
+          if (isFridge) ctx.fillStyle = 'rgba(2,10,18,1)';
+          ctx.fillRect(x, y, p.w, p.h);
+
+          ctx.fillStyle = th.accent.replace(',1)',',0.40)');
+          ctx.fillRect(x, y, p.w, 3);
+
+          if (isFridge) {
+            ctx.globalAlpha = 0.25;
+            ctx.fillStyle = 'rgba(248,250,252,1)';
+            for (let tx=0; tx<p.w; tx += 20) ctx.fillRect(x+tx, y+4, 10, 1);
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+
+      _renderMover(ctx, m) {
+        const x = Math.round(m.x - this.camera.x);
+        const y = Math.round(m.y - this.camera.y);
+        const th = this.level.theme;
+        ctx.fillStyle = 'rgba(2,6,23,1)';
+        ctx.fillRect(x, y, m.w, m.h);
+        ctx.fillStyle = th.accent.replace(',1)',',0.60)');
+        ctx.fillRect(x, y, m.w, 3);
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = th.accent;
+        ctx.fillRect(x-2, y-2, m.w+4, 1);
+        ctx.globalAlpha = 1;
+      }
+
+      _renderExit(ctx) {
+        const e = this.level.exit;
+        const th = this.level.theme;
+        const x = Math.round(e.x - this.camera.x);
+        const y = Math.round(e.y - this.camera.y);
+        const pulse = 0.6 + 0.4*Math.sin((this.time + this.levelIndex)*3.2);
+
+        ctx.fillStyle = th.accent.replace(',1)',`,${0.15 + 0.18*pulse})`);
+        ctx.fillRect(x-10, y-10, e.w+20, e.h+20);
+
+        ctx.fillStyle = th.accent;
+        ctx.fillRect(x, y, e.w, e.h);
+        ctx.fillStyle = 'rgba(15,23,42,1)';
+        ctx.fillRect(x+10, y+38, 6, 6);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace';
+        ctx.fillText('SORTIE', x-6, y-10);
+      }
+
+      _renderDecor(ctx, w, h) {
+        const th = this.level.theme;
+
+        // parallax blobs
+        ctx.globalAlpha = 0.85;
+        drawBlob(ctx, 120 - this.camera.x*0.08, 90, 60, th.accent.replace(',1)',',0.18)'));
+        drawBlob(ctx, 340 - this.camera.x*0.05, 140, 40, 'rgba(34,211,238,0.12)');
+        drawBlob(ctx, 560 - this.camera.x*0.03, 110, 50, 'rgba(251,146,60,0.10)');
+        ctx.globalAlpha = 1;
+
+        // decor objects
+        for (const d of this.level.decor) {
+          const x = d.x - this.camera.x * 0.35;
+          const y = d.y;
+          switch (th.deco) {
+            case 'stars': {
+              const tw = 0.55 + 0.45*Math.sin((this.time*3 + d.k*10));
+              const r = 1 + (d.k*2.2);
+              ctx.globalAlpha = 0.35 + 0.55*tw;
+              ctx.fillStyle = 'rgba(248,250,252,0.90)';
+              ctx.fillRect(Math.round(x), Math.round(y), r, r);
+              if (d.k > 0.82) {
+                ctx.globalAlpha = 0.25 + 0.35*tw;
+                ctx.fillStyle = th.accent;
+                ctx.fillRect(Math.round(x+3), Math.round(y+2), 1, 1);
+              }
+              ctx.globalAlpha = 1;
+              break;
+            }
+            case 'paper': {
+              ctx.save();
+              ctx.translate(x, y);
+              ctx.rotate((d.k-0.5)*0.4 + Math.sin(this.time*0.7 + d.seed*7)*0.06);
+              ctx.fillStyle = 'rgba(248,250,252,0.08)';
+              ctx.fillRect(-10, -6, 20, 12);
+              ctx.fillStyle = 'rgba(248,250,252,0.12)';
+              ctx.fillRect(-8, -2, 16, 2);
+              ctx.fillRect(-8, 2, 12, 2);
+              ctx.restore();
+              break;
+            }
+            case 'bubbles': {
+              const rr = 7 + d.k*16;
+              const yy = y + Math.sin(this.time*0.8 + d.seed*10) * 10;
+              ctx.globalAlpha = 0.10;
+              ctx.strokeStyle = th.accent;
+              ctx.beginPath();
+              ctx.arc(x, yy, rr, 0, Math.PI*2);
+              ctx.stroke();
+              ctx.globalAlpha = 1;
+              break;
+            }
+            case 'gears': {
+              const rr = 10 + d.k*12;
+              const teeth = 7 + Math.floor(d.k*6);
+              const rot = (this.time*0.2 + d.k)*1.8;
+              ctx.save();
+              ctx.translate(x, y);
+              ctx.rotate(rot);
+              ctx.globalAlpha = 0.12;
+              ctx.fillStyle = th.accent;
+              ctx.beginPath();
+              for (let i=0;i<teeth;i++) {
+                const a = i/teeth * Math.PI*2;
+                const r2 = rr + (i%2?3:0);
+                ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
+              }
+              ctx.closePath();
+              ctx.fill();
+              ctx.globalAlpha = 1;
+              ctx.restore();
+              break;
+            }
+            case 'confetti': {
+              const fall = (this.time*18 + d.seed*400) % (h+60);
+              const yy = -30 + fall;
+              const col = (d.k > 0.66) ? th.accent : (d.k > 0.33 ? 'rgba(248,250,252,0.7)' : 'rgba(167,139,250,0.7)');
+              ctx.save();
+              ctx.translate(x, yy);
+              ctx.rotate(this.time*0.6 + d.seed*6);
+              ctx.globalAlpha = 0.18;
+              ctx.fillStyle = col;
+              ctx.fillRect(-4, -2, 8, 4);
+              ctx.restore();
+              ctx.globalAlpha = 1;
+              break;
+            }
+            case 'snow': {
+              const fall = (this.time*14 + d.seed*500) % (h+80);
+              const yy = -40 + fall;
+              const xx = x + Math.sin(this.time*0.7 + d.seed*9) * 10;
+              ctx.globalAlpha = 0.22;
+              ctx.fillStyle = 'rgba(248,250,252,0.85)';
+              ctx.fillRect(Math.round(xx), Math.round(yy), 2, 2);
+              ctx.globalAlpha = 1;
+              break;
+            }
+            case 'crumbs': {
+              ctx.save();
+              ctx.translate(x, y + Math.sin(this.time*0.8 + d.seed*5)*3);
+              ctx.rotate((d.k-0.5)*0.6);
+              ctx.globalAlpha = 0.14;
+              ctx.fillStyle = th.accent;
+              ctx.fillRect(-6, -2, 12, 4);
+              ctx.restore();
+              ctx.globalAlpha = 1;
+              break;
+            }
+            default: {
+              // cranes
+              ctx.globalAlpha = 0.12;
+              ctx.fillStyle = th.accent;
+              ctx.fillRect(Math.round(x), Math.round(y), 3, 30);
+              ctx.fillRect(Math.round(x-14), Math.round(y+8), 30, 3);
+              ctx.globalAlpha = 1;
+              break;
+            }
+          }
+        }
+      }
+
+      tick() {
+        const t = now();
+        let frame = (t - this._last) / 1000;
+        this._last = t;
+        frame = clamp(frame, 0, 0.05);
+
+        if (this.state === GameState.PLAYING) {
+          if (this.input.wasPressed('Escape')) {
+            this.audio.play('ui', 1.0);
+            this.setState(GameState.PAUSED);
+          }
+        } else if (this.state === GameState.PAUSED) {
+          if (this.input.wasPressed('Escape')) {
+            this.audio.play('ui', 1.0);
+            this.setState(GameState.PLAYING);
+          }
+        }
+
+        if (this.state === GameState.PLAYING) {
+          this._accum += frame;
+          while (this._accum >= this.fixedStep) {
+            this.update(this.fixedStep);
+            this._accum -= this.fixedStep;
+            this.input.endFrame();
+          }
+        } else {
+          this.input.endFrame();
+        }
+
+        this.render();
+        updateHUD(this);
+        requestAnimationFrame(() => this.tick());
+      }
+    }
+
+    function drawBlob(ctx, x, y, r, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // ---------- UI binding ----------
+    const el = (id) => document.getElementById(id);
+
+    const overlay = el('overlay');
+    const panelMenu = el('panelMenu');
+    const panelPause = el('panelPause');
+    const panelGameOver = el('panelGameOver');
+    const panelWin = el('panelWin');
+    const panelScores = el('panelScores');
+
+    const statusDot = el('statusDot');
+    const statusText = el('statusText');
+    const seedInfo = el('seedInfo');
+
+    const hudLives = el('hudLives');
+    const hudScore = el('hudScore');
+    const hudCombo = el('hudCombo');
+    const hudPower = el('hudPower');
+    const hudLevel = el('hudLevel');
+
+    const scoreListOver = el('scoreListOver');
+    const scoreListWin = el('scoreListWin');
+    const scoreListAll = el('scoreListAll');
+
+    function showPanel(which) {
+      panelMenu.classList.toggle('hidden', which !== 'menu');
+      panelPause.classList.toggle('hidden', which !== 'pause');
+      panelGameOver.classList.toggle('hidden', which !== 'gameover');
+      panelWin.classList.toggle('hidden', which !== 'win');
+      panelScores.classList.toggle('hidden', which !== 'scores');
+      overlay.classList.toggle('hidden', which === 'none');
+    }
+
+    function updateUIFromGame(game) {
+      seedInfo.textContent = `seed ${game.seed} • ${game.level?.name || ''}`;
+      hudLevel.textContent = String(game.levelIndex + 1);
+
+      if (game.state === GameState.MENU) {
+        statusText.textContent = 'Menu';
+        statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        showPanel('menu');
+      } else if (game.state === GameState.PLAYING) {
+        statusText.textContent = 'En jeu';
+        statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        showPanel('none');
+      } else if (game.state === GameState.PAUSED) {
+        statusText.textContent = 'Pause';
+        statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+        showPanel('pause');
+      } else if (game.state === GameState.GAMEOVER) {
+        statusText.textContent = 'Game Over';
+        statusDot.className = 'w-2 h-2 rounded-full bg-rose-400';
+        renderLeaderboards();
+        showPanel('gameover');
+      } else if (game.state === GameState.WIN) {
+        statusText.textContent = 'Victoire';
+        statusDot.className = 'w-2 h-2 rounded-full bg-cyan-400';
+        renderLeaderboards();
+        showPanel('win');
+      } else if (game.state === GameState.SCORES) {
+        statusText.textContent = 'Scores';
+        statusDot.className = 'w-2 h-2 rounded-full bg-fuchsia-400';
+        renderLeaderboards();
+        showPanel('scores');
+      }
+    }
+
+    function updateHUD(game) {
+      hudLives.textContent = String(game.lives);
+      hudScore.textContent = formatScore(game.score);
+      const mul = game.currentComboMultiplier();
+      hudCombo.textContent = `x${mul.toFixed(1)}`;
+      hudPower.textContent = powerLabel(game.player?.power);
+      hudLevel.textContent = String(game.levelIndex + 1);
+    }
+
+    function renderLeaderboards() {
+      const scores = loadScores();
+      renderScoreList(scoreListOver, scores);
+      renderScoreList(scoreListWin, scores);
+      renderScoreList(scoreListAll, scores);
+    }
+
+    // ---------- Boot ----------
+    const game = new Game(document.getElementById('game'));
+
+    // Audio UI
+    const btnAudio = el('btnAudio');
+    const btnMusic = el('btnMusic');
+    const vol = el('vol');
+
+    function syncAudioUI() {
+      btnAudio.textContent = game.audio.enabled ? 'ON' : 'OFF';
+      btnAudio.className = game.audio.enabled
+        ? 'text-xs px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/20'
+        : 'text-xs px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/20';
+
+      btnMusic.textContent = game.audio.musicEnabled ? 'ON' : 'OFF';
+      btnMusic.className = game.audio.musicEnabled
+        ? 'text-xs px-2 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/20'
+        : 'text-xs px-2 py-1 rounded-lg bg-slate-700/40 hover:bg-slate-700/60 border border-slate-600/40';
+    }
+
+    vol.addEventListener('input', () => {
+      game.audio.setVolume(parseInt(vol.value, 10) / 100);
+    });
+    btnAudio.addEventListener('click', async () => {
+      await game.audio.unlock();
+      game.audio.toggleEnabled();
+      game.audio.play('ui', 1.0);
+      syncAudioUI();
+    });
+    btnMusic.addEventListener('click', async () => {
+      await game.audio.unlock();
+      game.audio.toggleMusic();
+      game.audio.play('ui', 1.0);
+      syncAudioUI();
+    });
+
+    // Buttons
+    async function startPlay() {
+      await game.audio.unlock();
+      game.audio.play('ui', 1.0);
+      if (game.audio.ctx) game.audio.startMusic(game.level.themeIndex);
+      game.setState(GameState.PLAYING);
+    }
+
+    el('btnStart').addEventListener('click', startPlay);
+    el('btnHow').addEventListener('click', () => { document.getElementById('docs').scrollIntoView({behavior:'smooth', block:'start'}); });
+
+    // duplicated header buttons
+    const btnPlay = el('btnPlay');
+    const btnPlay2 = el('btnPlay2');
+    const btnDocs = el('btnDocs');
+    const btnDocs2 = el('btnDocs2');
+
+    function onPlayClick() {
+      (async () => {
+        await game.audio.unlock();
+        game.audio.play('ui', 1.0);
+        if (game.state === GameState.MENU || game.state === GameState.GAMEOVER) game.restartFromMenu();
+        else if (game.state === GameState.PAUSED) game.setState(GameState.PLAYING);
+        else game.setState(GameState.PLAYING);
+      })();
+    }
+
+    btnPlay?.addEventListener('click', onPlayClick);
+    btnPlay2?.addEventListener('click', onPlayClick);
+
+    btnDocs?.addEventListener('click', () => { document.getElementById('docs').scrollIntoView({behavior:'smooth', block:'start'}); });
+    btnDocs2?.addEventListener('click', () => { document.getElementById('docs').scrollIntoView({behavior:'smooth', block:'start'}); });
+
+    el('btnResume').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); game.setState(GameState.PLAYING); });
+    el('btnRestart').addEventListener('click', async () => {
+      await game.audio.unlock();
+      game.audio.play('ui', 1.0);
+      const keep = { lives: game.lives, score: game.score, power: game.player.power };
+      game.loadLevel(game.levelIndex, false, keep);
+      game.setState(GameState.PLAYING);
+    });
+
+    el('btnRetry').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); game.restartFromMenu(); });
+    el('btnBackMenu').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); game.setState(GameState.MENU); });
+
+    el('btnNext').addEventListener('click', async () => {
+      await game.audio.unlock();
+      game.audio.play('ui', 1.0);
+      const next = game.levelIndex + 1;
+      if (next < game.levels.length) {
+        const keep = { lives: game.lives, score: game.score, power: game.player.power };
+        game.loadLevel(next, false, keep);
+        game.setState(GameState.PLAYING);
+      } else {
+        // finishing loop: back to menu but keep score (score saving only at Game Over)
+        game.textFx.push(game.player.x, game.player.y-40, 'SÉRIE TERMINÉE!', 'rgba(248,250,252,0.95)', 18, 1.1);
+        game.setState(GameState.MENU);
+      }
+    });
+    el('btnWinMenu').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); game.setState(GameState.MENU); });
+
+    // Score panels
+    el('btnScores').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); game.setState(GameState.SCORES); });
+    el('btnCloseScores').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); game.setState(GameState.MENU); });
+
+    function doSaveScore(name) {
+      const n = (name || '').trim().slice(0, 14) || 'Anonyme';
+      const entry = {
+        name: n,
+        score: Math.floor(game.score),
+        level: game.levelIndex + 1,
+        date: Date.now(),
+      };
+      saveScore(entry);
+      renderLeaderboards();
+    }
+
+    el('btnSaveOver').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); doSaveScore(el('nameOver').value); });
+
+    function clearScoresAll() {
+      clearScores();
+      renderLeaderboards();
+    }
+
+    el('btnClearScores').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); clearScoresAll(); });
+    el('btnClearScores2').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); clearScoresAll(); });
+    el('btnClearScores3').addEventListener('click', async () => { await game.audio.unlock(); game.audio.play('ui', 1.0); clearScoresAll(); });
+
+    // Enter key saves in Game Over overlay
+    el('nameOver').addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') { await game.audio.unlock(); game.audio.play('ui', 1.0); doSaveScore(el('nameOver').value); }
+    });
+
+    // ---- Touch controls wiring (portrait/mobile) ----
+    const touchUI = el('touchUI');
+    const touchLeft = el('touchLeft');
+    const touchRight = el('touchRight');
+    const touchJump = el('touchJump');
+    const touchPause = el('touchPause');
+
+    function bindHold(btn, key) {
+      if (!btn) return;
+      const down = (e) => {
+        e.preventDefault();
+        game.input.vKeyDown(key);
+      };
+      const up = (e) => {
+        e.preventDefault();
+        game.input.vKeyUp(key);
+      };
+
+      btn.addEventListener('pointerdown', down, { passive:false });
+      btn.addEventListener('pointerup', up, { passive:false });
+      btn.addEventListener('pointercancel', up, { passive:false });
+      btn.addEventListener('pointerleave', up, { passive:false });
+    }
+
+    bindHold(touchLeft, 'ArrowLeft');
+    bindHold(touchRight, 'ArrowRight');
+
+    // Jump: tap (edge-trigger) but also allow hold -> keep key down
+    if (touchJump) {
+      touchJump.addEventListener('pointerdown', (e) => { e.preventDefault(); game.input.vKeyDown(' '); }, { passive:false });
+      touchJump.addEventListener('pointerup', (e) => { e.preventDefault(); game.input.vKeyUp(' '); }, { passive:false });
+      touchJump.addEventListener('pointercancel', (e) => { e.preventDefault(); game.input.vKeyUp(' '); }, { passive:false });
+    }
+
+    if (touchPause) {
+      touchPause.addEventListener('click', async (e) => {
+        e.preventDefault();
+        await game.audio.unlock();
+        game.audio.play('ui', 1.0);
+        if (game.state === GameState.PLAYING) game.setState(GameState.PAUSED);
+        else if (game.state === GameState.PAUSED) game.setState(GameState.PLAYING);
+      });
+    }
+
+    // Portrait-friendly canvas aspect: use taller aspect on narrow screens
+    function syncPortraitLayout() {
+      const holder = game.canvas?.parentElement;
+      if (!holder) return;
+      const isPortrait = window.matchMedia('(max-width: 640px)').matches && window.matchMedia('(orientation: portrait)').matches;
+      holder.classList.toggle('aspect-[16/9]', !isPortrait);
+      holder.classList.toggle('aspect-[9/16]', isPortrait);
+      touchUI?.classList.toggle('hidden', !window.matchMedia('(max-width: 640px)').matches);
+      game.resize();
+    }
+    window.addEventListener('resize', syncPortraitLayout);
+    window.addEventListener('orientationchange', syncPortraitLayout);
+
+    // Init UI state
+    syncAudioUI();
+    renderLeaderboards();
+    updateUIFromGame(game);
+    syncPortraitLayout();
+    game.tick();
+  </script>
+</body>
+</html>
